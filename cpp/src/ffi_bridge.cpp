@@ -1,4 +1,13 @@
 #include "audio_engine.h"
+#include <juce_core/juce_core.h>
+
+#if JUCE_ANDROID
+#include <jni.h>
+extern "C" JNIEXPORT void JNICALL
+Java_com_ram_sridaw_MainActivity_initJuceJNI(JNIEnv* env, jobject thiz, jobject context) {
+    juce::Thread::initialiseJUCE(env, context);
+}
+#endif
 
 #ifdef _WIN32
 #define FFI_EXPORT __declspec(dllexport)
