@@ -172,21 +172,25 @@ class _DawWorkspaceState extends State<DawWorkspace> {
       allowedExtensions: ['mid', 'midi'],
     );
 
-    if (files != null && files.isNotEmpty && files.single.path != null) {
-      String path = files.single.path!;
-      bool success = _audioBridge?.loadMidiFile(path) ?? false;
-      if (success) {
-        setState(() {
-          _loadedMidiName = files.single.name;
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Loaded MIDI: $_loadedMidiName', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to load MIDI file.', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
-        );
+    if (files != null && files.isNotEmpty) {
+      final String? path = files.single.path;
+      if (path != null) {
+        bool success = _audioBridge?.loadMidiFile(path) ?? false;
+        if (success) {
+          setState(() {
+            _loadedMidiName = files.single.name;
+          });
+          
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Loaded MIDI: $_loadedMidiName', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green),
+          );
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to load MIDI file.', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+          );
+        }
       }
     }
   }
@@ -356,9 +360,9 @@ class _DawWorkspaceState extends State<DawWorkspace> {
                                   decoration: BoxDecoration(
                                     color: isActive 
                                         ? (isPlayingNow ? Colors.white : channel["color"]) 
-                                        : (isPlayingNow ? channel["color"].withOpacity(0.3) : const Color(0xFF1A1A1A)),
+                                        : (isPlayingNow ? channel["color"].withValues(alpha: 0.3) : const Color(0xFF1A1A1A)),
                                     border: Border.all(
-                                      color: isPlayingNow ? Colors.white : Colors.white.withOpacity(0.05),
+                                      color: isPlayingNow ? Colors.white : Colors.white.withValues(alpha: 0.05),
                                       width: isPlayingNow ? 1.5 : 1.0,
                                     ),
                                     borderRadius: BorderRadius.circular(2),
@@ -436,10 +440,13 @@ class _DawWorkspaceState extends State<DawWorkspace> {
                       type: FileType.custom,
                       allowedExtensions: ['wav', 'aiff', 'mp3'],
                     );
-                    if (files != null && files.isNotEmpty && files.single.path != null) {
-                      bool success = _audioBridge?.loadTrackSample(index, files.single.path!) ?? false;
-                      if (success) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Loaded sample into ${channel["name"]}')));
+                    if (files != null && files.isNotEmpty) {
+                      final String? samplePath = files.single.path;
+                      if (samplePath != null) {
+                        bool success = _audioBridge?.loadTrackSample(index, samplePath) ?? false;
+                        if (success && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Loaded sample into ${channel["name"]}')));
+                        }
                       }
                     }
                   },
