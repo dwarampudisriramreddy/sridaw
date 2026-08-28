@@ -32,6 +32,9 @@ target_link_libraries(sridaw_juce PRIVATE
     juce::juce_events
 )
 
+# Generate JuceHeader.h
+juce_generate_juce_header(sridaw_juce)
+
 # For JUCE, we need to add the module headers to include directories
 target_include_directories(sridaw_juce PRIVATE src)
 
