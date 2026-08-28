@@ -20,7 +20,7 @@ Java_com_ram_sridaw_MainActivity_initJuceJNI(JNIEnv* env, jobject thiz, jobject 
     // stay null, which makes JUCE's Android MIDI manager abort with
     // "JNI DETECTED ERROR: mid == null". Replicate what juce_JavainitialiseJUCE
     // does so the embedded JUCE Java bytecode classes are resolved.
-    JNIClassBase::initialiseAllClasses(env, context);
+    juce::JNIClassBase::initialiseAllClasses(env, context);
     juce::Thread::initialiseJUCE(env, context);
 }
 #endif
