@@ -112,13 +112,20 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   Future<void> _initAudioEngine() async {
     try {
       // Request microphone permission (needed by JUCE AudioDeviceManager even for output)
+      debugPrint("SriDAW: requesting microphone permission...");
       await Permission.microphone.request();
+      debugPrint("SriDAW: microphone permission done");
       // Request storage permission to load files
+      debugPrint("SriDAW: requesting storage permission...");
       await Permission.storage.request();
+      debugPrint("SriDAW: storage permission done");
 
+      debugPrint("SriDAW: opening AudioEngineBridge...");
       _audioBridge = AudioEngineBridge();
+      debugPrint("SriDAW: bridge opened, initializing JUCE engine...");
       bool success = _audioBridge?.initialize() ?? false;
-      
+      debugPrint("SriDAW: initialize() returned: $success");
+
       if (success) {
         _audioBridge?.setVolume(_masterVolume);
         for (int i = 0; i < _channels.length; i++) {
@@ -128,12 +135,13 @@ class _DawWorkspaceState extends State<DawWorkspace> {
         setState(() {
           _isEngineReady = true;
         });
-        debugPrint("JUCE Engine loaded successfully!");
+        debugPrint("SriDAW: JUCE Engine loaded successfully!");
       } else {
-        debugPrint("JUCE Engine failed to initialize internally!");
+        debugPrint("SriDAW: JUCE Engine failed to initialize internally!");
       }
     } catch (e) {
-      debugPrint("JUCE Engine failed to load library: $e");
+      debugPrint("SriDAW: JUCE Engine failed to load library: $e");
+      debugPrint("SriDAW: stack: ${StackTrace.current}");
     }
   }
 

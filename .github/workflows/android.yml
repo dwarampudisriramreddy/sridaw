@@ -45,15 +45,29 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      - name: Build APK
+      - name: Build release APK
         run: flutter build apk --release
 
-      - name: Verify native library is packaged
+      - name: Build debug APK (for crash logging / adb logcat)
+        run: flutter build apk --debug
+
+      - name: Verify native library is packaged (release)
         run: |
           unzip -l build/app/outputs/flutter-apk/app-release.apk | grep -i "lib/.*/libsridaw_juce.so" || (echo "ERROR: libsridaw_juce.so NOT found in APK - native engine missing, app will crash at System.loadLibrary" && exit 1)
 
-      - name: Upload APK
+      - name: Check JUCE JNI symbol exists in native lib
+        run: |
+          unzip -p build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libsridaw_juce.so > /tmp/sridaw.so
+          strings /tmp/sridaw.so | grep -i "Java_com_ram_sridaw_MainActivity_initJuceJNI" && echo "JNI symbol found" || echo "WARNING: initJuceJNI symbol not found (removed JNI path)"
+
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
