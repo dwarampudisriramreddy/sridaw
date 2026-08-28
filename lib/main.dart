@@ -5,6 +5,12 @@ import 'package:permission_handler/permission_handler.dart';
 import 'ffi/audio_bindings.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint("FATAL-UNHANDLED-ERROR: ${details.exceptionAsString()}");
+    debugPrint("FATAL-STACK: ${details.stack}");
+  };
   runApp(const DawApp());
 }
 
@@ -104,12 +110,12 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   }
 
   Future<void> _initAudioEngine() async {
-    // Request microphone permission (needed by JUCE AudioDeviceManager even for output)
-    await Permission.microphone.request();
-    // Request storage permission to load files
-    await Permission.storage.request();
-
     try {
+      // Request microphone permission (needed by JUCE AudioDeviceManager even for output)
+      await Permission.microphone.request();
+      // Request storage permission to load files
+      await Permission.storage.request();
+
       _audioBridge = AudioEngineBridge();
       bool success = _audioBridge?.initialize() ?? false;
       

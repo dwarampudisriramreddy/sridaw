@@ -1,7 +1,0 @@
-# Python requirements for SriDAW
-# These will be automatically included in the Android build
-
-kivy
-pygments
-six
-# Note: music21 is implemented locally in the music21/ directory
