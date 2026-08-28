@@ -62,25 +62,20 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   ];
 
   int _activeStepIndex = 0;
+  bool _isEngineReady = false;
 
   @override
   void initState() {
     super.initState();
-    try {
-      _audioBridge = AudioEngineBridge();
-      _audioBridge?.initialize();
-      _audioBridge?.setVolume(_masterVolume);
-      
-      for (int i = 0; i < _channels.length; i++) {
-        _audioBridge?.setTrackVolume(i, _channels[i]["vol"]);
-        _audioBridge?.setTrackMute(i, _channels[i]["mute"]);
-      }
-    } catch (e) {
-      debugPrint("JUCE Engine not loaded: $e");
-    }
+    
+    // We defer initialization to avoid native Android crashes on startup
+    // before permissions are granted.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initAudioEngine();
+    });
 
     _meterTimer = Timer.periodic(const Duration(milliseconds: 40), (timer) {
-      if (_isPlaying && _audioBridge != null) {
+      if (_isPlaying && _audioBridge != null && _isEngineReady) {
         // Fetch Peak Levels and Playhead Time
         double playTime = _audioBridge!.getPlayheadTime();
         double stepDuration = (60.0 / _bpm) / 4.0;
@@ -105,6 +100,34 @@ class _DawWorkspaceState extends State<DawWorkspace> {
         });
       }
     });
+  }
+
+  Future<void> _initAudioEngine() async {
+    // Request microphone permission (needed by JUCE AudioDeviceManager even for output)
+    await Permission.microphone.request();
+    // Request storage permission to load files
+    await Permission.storage.request();
+
+    try {
+      _audioBridge = AudioEngineBridge();
+      bool success = _audioBridge?.initialize() ?? false;
+      
+      if (success) {
+        _audioBridge?.setVolume(_masterVolume);
+        for (int i = 0; i < _channels.length; i++) {
+          _audioBridge?.setTrackVolume(i, _channels[i]["vol"]);
+          _audioBridge?.setTrackMute(i, _channels[i]["mute"]);
+        }
+        setState(() {
+          _isEngineReady = true;
+        });
+        debugPrint("JUCE Engine loaded successfully!");
+      } else {
+        debugPrint("JUCE Engine failed to initialize internally!");
+      }
+    } catch (e) {
+      debugPrint("JUCE Engine failed to load library: $e");
+    }
   }
 
   @override

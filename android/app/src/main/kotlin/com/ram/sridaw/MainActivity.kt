@@ -9,7 +9,7 @@ class MainActivity : FlutterActivity() {
         try {
             System.loadLibrary("sridaw_juce")
             initJuceJNI(this)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             e.printStackTrace()
         }
     }
