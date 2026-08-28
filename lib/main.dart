@@ -137,17 +137,17 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   }
 
   Future<void> _pickMidiFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    List<PlatformFile>? files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['mid', 'midi'],
     );
 
-    if (result != null && result.files.single.path != null) {
-      String path = result.files.single.path!;
+    if (files != null && files.isNotEmpty && files.single.path != null) {
+      String path = files.single.path!;
       bool success = _audioBridge?.loadMidiFile(path) ?? false;
       if (success) {
         setState(() {
-          _loadedMidiName = result.files.single.name;
+          _loadedMidiName = files.single.name;
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
@@ -402,12 +402,12 @@ class _DawWorkspaceState extends State<DawWorkspace> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: () async {
-                    FilePickerResult? result = await FilePicker.platform.pickFiles(
+                    List<PlatformFile>? files = await FilePicker.pickFiles(
                       type: FileType.custom,
                       allowedExtensions: ['wav', 'aiff', 'mp3'],
                     );
-                    if (result != null && result.files.single.path != null) {
-                      bool success = _audioBridge?.loadTrackSample(index, result.files.single.path!) ?? false;
+                    if (files != null && files.isNotEmpty && files.single.path != null) {
+                      bool success = _audioBridge?.loadTrackSample(index, files.single.path!) ?? false;
                       if (success) {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Loaded sample into ${channel["name"]}')));
                       }
