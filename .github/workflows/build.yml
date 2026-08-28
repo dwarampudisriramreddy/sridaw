@@ -1,0 +1,35 @@
+name: Build
+
+on: [push, pull_request]
+
+jobs:
+  build-android:
+    name: Build for Android
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Build Docker environment
+        run: docker build -t sridaw-build -f Dockerfile.build .
+
+      - name: 🔨 Build APK with Buildozer
+        run: |
+          # Run the build inside the container, mapping the current directory to /app
+          # This allows the container to write the APK back to the 'bin/' folder
+          docker run --rm -v $(pwd):/app sridaw-build
+
+      - name: 📤 Upload built APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SriDAW-APK
+          path: bin/*.apk
+
+      - name: 🚨 Show logs on failure
+        if: failure()
+        run: |
+          echo "Build failed. Checking for logs..."
+          # Try to find and cat the build log if it exists
+          find .buildozer/android/platform/ -name "output.txt" -exec cat {} + || echo "No logs found."
