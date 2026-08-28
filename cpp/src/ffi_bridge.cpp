@@ -1,10 +1,25 @@
 #include "audio_engine.h"
+
+#if JUCE_ANDROID
+#ifndef JUCE_CORE_INCLUDE_JNI_HELPERS
+#define JUCE_CORE_INCLUDE_JNI_HELPERS 1
+#endif
+#endif
+
 #include <juce_core/juce_core.h>
 
 #if JUCE_ANDROID
 #include <jni.h>
 extern "C" JNIEXPORT void JNICALL
 Java_com_ram_sridaw_MainActivity_initJuceJNI(JNIEnv* env, jobject thiz, jobject context) {
+    // This host app is a Flutter app, NOT a Projucer-generated app, so the JUCE
+    // Java class (com/rmsl/juce/Java) that normally triggers JNI class
+    // initialisation is absent from the APK. Without initialiseAllClasses(), all
+    // JNIClassBase method IDs (e.g. JuceMidiSupport.getAndroidMidiDeviceManager)
+    // stay null, which makes JUCE's Android MIDI manager abort with
+    // "JNI DETECTED ERROR: mid == null". Replicate what juce_JavainitialiseJUCE
+    // does so the embedded JUCE Java bytecode classes are resolved.
+    JNIClassBase::initialiseAllClasses(env, context);
     juce::Thread::initialiseJUCE(env, context);
 }
 #endif

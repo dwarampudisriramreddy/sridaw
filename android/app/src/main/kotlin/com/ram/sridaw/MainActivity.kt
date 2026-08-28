@@ -16,6 +16,10 @@ class MainActivity : FlutterActivity() {
         @Volatile
         var juceLibraryLoaded: Boolean = false
             private set
+
+        // Guard so JUCE is initialised exactly once (it must not be called twice).
+        @Volatile
+        private var juceInitialised: Boolean = false
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,11 +29,16 @@ class MainActivity : FlutterActivity() {
             System.loadLibrary("sridaw_juce")
             juceLibraryLoaded = true
             log("onCreate: libsridaw_juce.so loaded OK")
+
+            // Required: resolves JUCE's JNI class/field/method IDs (and the
+            // embedded Android MIDI support) before the audio engine uses them.
+            initJuceJNI(this)
+            juceInitialised = true
+            log("onCreate: initJuceJNI OK")
         } catch (e: Throwable) {
             // Never let a native library load failure kill the app at startup.
             // The Dart side (AudioEngineBridge) reports the real error via FFI.
-            juceLibraryLoaded = false
-            log("onCreate: libsridaw_juce.so load FAILED - $e")
+            log("onCreate: JUCE init FAILED - $e")
         }
     }
 
@@ -43,4 +52,6 @@ class MainActivity : FlutterActivity() {
             // Logging to file is best-effort only
         }
     }
+
+    external fun initJuceJNI(context: Any)
 }
