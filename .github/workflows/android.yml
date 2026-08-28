@@ -34,7 +34,7 @@ jobs:
         run: sudo apt-get install ninja-build
 
       - name: Install JUCE Linux Dependencies
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libx11-dev libxinerama-dev libxext-dev libfreetype6-dev libwebkit2gtk-4.0-dev libglu1-mesa-dev libjack-jackd2-dev libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libx11-dev libxinerama-dev libxext-dev libfreetype6-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev libjack-jackd2-dev libcurl4-openssl-dev
 
       - name: Install dependencies
         run: flutter pub get
