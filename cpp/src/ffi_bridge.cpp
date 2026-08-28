@@ -1,12 +1,13 @@
-#include "audio_engine.h"
-
+// IMPORTANT: Must be defined BEFORE any JUCE header is included. On Android,
+// this makes juce_core.h pull in juce_JNIHelpers_android.h so that
+// JNIClassBase is visible to this translation unit.
 #if JUCE_ANDROID
 #ifndef JUCE_CORE_INCLUDE_JNI_HELPERS
 #define JUCE_CORE_INCLUDE_JNI_HELPERS 1
 #endif
 #endif
 
-#include <juce_core/juce_core.h>
+#include "audio_engine.h"
 
 #if JUCE_ANDROID
 #include <jni.h>
