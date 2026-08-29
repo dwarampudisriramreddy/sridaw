@@ -50,18 +50,22 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val t0 = System.currentTimeMillis()
         try {
             super.onCreate(savedInstanceState)
             log("onCreate: loading libsridaw_juce.so")
+            val tLib = System.currentTimeMillis()
             System.loadLibrary("sridaw_juce")
             juceLibraryLoaded = true
-            log("onCreate: libsridaw_juce.so loaded OK")
+            log("onCreate: libsridaw_juce.so loaded OK (${System.currentTimeMillis() - tLib} ms)")
 
             // Required: resolves JUCE's JNI class/field/method IDs (and the
             // embedded Android MIDI support) before the audio engine uses them.
+            val tJni = System.currentTimeMillis()
             initJuceJNI(this)
             juceInitialised = true
-            log("onCreate: initJuceJNI OK")
+            log("onCreate: initJuceJNI OK (${System.currentTimeMillis() - tJni} ms)")
+            log("onCreate: total (${System.currentTimeMillis() - t0} ms)")
         } catch (e: Throwable) {
             // Never let a native library load failure kill the app at startup.
             // The Dart side (AudioEngineBridge) reports the real error via FFI.

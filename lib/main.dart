@@ -129,6 +129,20 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   int _playheadStep = -1;
   bool _isEngineReady = false;
 
+  // On-screen debug console state
+  bool _showDebug = false;
+  bool _sfLoaded = false;
+  String _sfPath = '';
+  String _engineStatus = 'not started';
+  final List<String> _logs = [];
+  int _meterTickCount = 0;
+
+  void _log(String msg) {
+    debugPrint(msg);
+    final t = DateTime.now().toString().substring(11, 19);
+    if (mounted) setState(() => _logs.add('$t  $msg'));
+  }
+
   final List<Track> _tracks = [
     Track(
       name: 'Keys',
@@ -169,25 +183,40 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   // Audio engine
   // ---------------------------------------------------------------------------
   Future<void> _initAudioEngine() async {
+    final sw = Stopwatch()..start();
+    _log("init: start");
     try {
+      _engineStatus = 'requesting permissions';
       await Permission.microphone.request();
       await Permission.storage.request();
 
+      _engineStatus = 'creating bridge + initialize()';
       _audioBridge = AudioEngineBridge();
       bool success = _audioBridge?.initialize() ?? false;
-      debugPrint("SriDAW: initialize() returned: $success");
+      _log("init: initialize() returned: $success (${sw.elapsedMilliseconds} ms)");
 
       if (success) {
+        _engineStatus = 'loading soundfont';
         try {
           const platform = MethodChannel('com.ram.sridaw/assets');
+          _log("init: calling extractSoundFont...");
           final String? sfPath = await platform.invokeMethod('extractSoundFont');
+          _log("init: extractSoundFont -> ${sfPath ?? 'null'} (${sw.elapsedMilliseconds} ms)");
           if (sfPath != null) {
             bool sfLoaded = _audioBridge?.loadSoundFont(sfPath) ?? false;
-            debugPrint("SriDAW: SoundFont loaded: $sfLoaded ($sfPath)");
-            debugPrint("SriDAW: isSoundFontLoaded=${_audioBridge?.isSoundFontLoaded()}");
+            _sfLoaded = sfLoaded;
+            _sfPath = sfPath;
+            _log("init: loadSoundFont('$sfPath') -> $sfLoaded");
+            _log("init: isSoundFontLoaded=${_audioBridge?.isSoundFontLoaded()}");
+            if (!sfLoaded) {
+              _log("ERROR: SoundFont failed to load — no audio will be produced. "
+                   "Check the .sf2 file / path. FluidSynth noteon needs a preset on the channel.");
+            }
+          } else {
+            _log("ERROR: extractSoundFont returned null (asset missing or MethodChannel mismatch)");
           }
         } catch (e) {
-          debugPrint("SriDAW: Failed to extract/load SoundFont: $e");
+          _log("ERROR: Failed to extract/load SoundFont: $e");
         }
 
         _audioBridge?.setVolume(_masterVolume);
@@ -198,11 +227,46 @@ class _DawWorkspaceState extends State<DawWorkspace> {
           _audioBridge?.setTrackMute(i, t.mute);
         }
         setState(() => _isEngineReady = true);
-        debugPrint("SriDAW: Engine ready");
+        _engineStatus = 'ready';
+        _log("init: Engine ready (total ${sw.elapsedMilliseconds} ms)");
+      } else {
+        _engineStatus = 'initialize() failed';
+        _log("ERROR: initialize() returned false — audio device could not be opened");
       }
     } catch (e) {
-      debugPrint("SriDAW: Engine init failed: $e");
+      _engineStatus = 'exception: $e';
+      _log("ERROR: Engine init failed: $e");
     }
+  }
+
+  Future<void> _diagnose() async {
+    _log("--- DIAGNOSE ---");
+    _log("engineReady=$_isEngineReady  status=$_engineStatus");
+    final loaded = _audioBridge?.isSoundFontLoaded() ?? false;
+    final path = _audioBridge?.getSoundFontPath();
+    _sfLoaded = loaded;
+    _sfPath = path ?? '';
+    _log("isSoundFontLoaded=$loaded");
+    _log("soundFontPath=${path ?? '<null>'}");
+    _log("isPlaying=$_isPlaying  masterVol=$_masterVolume");
+  }
+
+  void _testNote() {
+    if (!_isEngineReady) {
+      _log("testNote: engine not ready");
+      return;
+    }
+    _audioBridge?.playPreviewNote(0, 60, 0.9);
+    _log("testNote: played Middle C (ch0) — should hear piano if SF loaded");
+    Future.delayed(const Duration(milliseconds: 700), () {
+      _audioBridge?.playPreviewNote(0, 60, 0.0);
+      _log("testNote: stopped");
+    });
+  }
+
+  Future<void> _reinit() async {
+    _log("re-init requested");
+    await _initAudioEngine();
   }
 
   void _onMeterTick(Timer timer) {
@@ -217,6 +281,11 @@ class _DawWorkspaceState extends State<DawWorkspace> {
           _tracks[i].peak = _tracks[i].mute ? 0.0 : _audioBridge!.getTrackPeakLevel(i);
         }
       });
+      // Periodically log meter peaks (every ~1s) to confirm audio is flowing.
+      if (++_meterTickCount % 20 == 0) {
+        final peaks = _tracks.map((t) => t.peak.toStringAsFixed(3)).join(' ');
+        _log("playhead=${t.toStringAsFixed(2)}s step=$step peaks[$peaks]");
+      }
     } else if (_playheadStep != -1) {
       setState(() => _playheadStep = -1);
     }
@@ -228,9 +297,11 @@ class _DawWorkspaceState extends State<DawWorkspace> {
     if (_isPlaying) {
       _syncArrangementToEngine();
       _audioBridge?.playDemo(true);
+      _log("PLAY: arrangement synced, playDemo(true). stepDur=${_stepDuration.toStringAsFixed(4)}s");
     } else {
       _audioBridge?.playDemo(false);
       _audioBridge?.setLoopDuration(2.0);
+      _log("STOP: playDemo(false)");
     }
   }
 
@@ -239,6 +310,7 @@ class _DawWorkspaceState extends State<DawWorkspace> {
     if (_audioBridge == null) return;
     _audioBridge!.clearMidiSequence();
     final double sd = _stepDuration;
+    int noteCount = 0;
     for (int t = 0; t < _tracks.length; t++) {
       final tr = _tracks[t];
       for (final bar in tr.clips) {
@@ -246,10 +318,12 @@ class _DawWorkspaceState extends State<DawWorkspace> {
           final double start = (bar * kStepsPerBar + n.startStep) * sd;
           final double dur = n.lengthSteps * sd;
           _audioBridge!.addMidiNote(t, n.note, start, dur, 0.85);
+          noteCount++;
         }
       }
     }
     _audioBridge!.setLoopDuration(kArrangementBars * kStepsPerBar * sd);
+    _log("sync: added $noteCount notes across ${_tracks.where((t) => t.clips.isNotEmpty).length} tracks; loop=${(kArrangementBars * kStepsPerBar * sd).toStringAsFixed(2)}s");
   }
 
   /// Play only the selected track's phrase (one bar loop).
@@ -264,11 +338,13 @@ class _DawWorkspaceState extends State<DawWorkspace> {
     _audioBridge!.setLoopDuration(kStepsPerBar * sd);
     _audioBridge?.playDemo(true);
     setState(() => _isPlaying = true);
+    _log("PLAY PHRASE: track=${tr.name} (ch$_selectedTrack) ${tr.notes.length} notes; loop=${(kStepsPerBar * sd).toStringAsFixed(2)}s");
   }
 
   void _previewNote(int note, double velocity) {
     if (_audioBridge == null || !_isEngineReady) return;
     if (velocity > 0) {
+      _log("preview: note=$note ch=$_selectedTrack vel=$velocity");
       _audioBridge!.playPreviewNote(_selectedTrack, note, velocity);
       Future.delayed(const Duration(milliseconds: 220), () {
         _audioBridge?.playPreviewNote(_selectedTrack, note, 0.0);
@@ -358,6 +434,12 @@ class _DawWorkspaceState extends State<DawWorkspace> {
             style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w300, fontSize: 16)),
         actions: [
           IconButton(
+            icon: const Icon(Icons.bug_report_outlined, size: 20),
+            tooltip: 'Debug console',
+            color: _showDebug ? const Color(0xFF4ADE80) : null,
+            onPressed: () => setState(() => _showDebug = !_showDebug),
+          ),
+          IconButton(
             icon: const Icon(Icons.folder_open_outlined, size: 20),
             tooltip: 'Load MIDI',
             onPressed: _pickMidiFile,
@@ -372,18 +454,100 @@ class _DawWorkspaceState extends State<DawWorkspace> {
           ],
         ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: TabBarView(
+          Column(
+            children: [
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildPhrasesView(),
+                    _buildTracksView(),
+                  ],
+                ),
+              ),
+              _buildTransport(),
+            ],
+          ),
+          if (_showDebug) _buildDebugPanel(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDebugPanel() {
+    final Color dotColor = _sfLoaded ? const Color(0xFF4ADE80) : Colors.redAccent;
+    return Positioned.fill(
+      child: Column(
+        children: [
+          const Spacer(),
+          Container(
+            height: 260,
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.94),
+              border: const Border(top: BorderSide(color: Color(0xFF4ADE80))),
+            ),
+            child: Column(
               children: [
-                _buildPhrasesView(),
-                _buildTracksView(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: Colors.white12)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.circle, size: 10, color: dotColor),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'SF: ${_sfLoaded ? "LOADED" : "NOT LOADED"}  ·  $_engineStatus',
+                          style: const TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ),
+                      _debugBtn('DIAGNOSE', _diagnose),
+                      _debugBtn('TEST NOTE', _testNote),
+                      _debugBtn('RE-INIT', _reinit),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 16),
+                        color: Colors.white54,
+                        onPressed: () => setState(() => _showDebug = false),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(6),
+                    itemCount: _logs.length,
+                    itemBuilder: (_, i) => Text(
+                      _logs[i],
+                      style: const TextStyle(
+                        color: Color(0xFF9EFFB0),
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-          _buildTransport(),
         ],
+      ),
+    );
+  }
+
+  Widget _debugBtn(String label, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: TextButton(
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: onTap,
+        child: Text(label, style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 10)),
       ),
     );
   }
@@ -678,6 +842,14 @@ class _DawWorkspaceState extends State<DawWorkspace> {
             child: Icon(_isPlaying ? Icons.stop : Icons.play_arrow),
           ),
           const SizedBox(width: 16),
+          Tooltip(
+            message: _sfLoaded
+                ? 'SoundFont loaded: $_sfPath'
+                : 'SoundFont NOT loaded — no audio. Tap bug icon for debug.',
+            child: Icon(Icons.circle,
+                size: 10, color: _sfLoaded ? const Color(0xFF4ADE80) : Colors.redAccent),
+          ),
+          const SizedBox(width: 10),
           const Text('BPM', style: TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
           const SizedBox(width: 6),
           DropdownButton<int>(
