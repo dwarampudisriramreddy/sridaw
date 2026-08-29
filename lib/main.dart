@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -60,12 +61,12 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   String _loadedMidiName = "Demo C Major Chord";
 
   final List<Map<String, dynamic>> _channels = [
-    {"name": "Kick", "vol": 0.8, "pan": 0.0, "color": Colors.redAccent, "mute": false, "solo": false, "peak": 0.0},
-    {"name": "Snare", "vol": 0.75, "pan": 0.1, "color": Colors.orangeAccent, "mute": false, "solo": false, "peak": 0.0},
-    {"name": "HiHat", "vol": 0.6, "pan": -0.3, "color": Colors.yellowAccent, "mute": false, "solo": false, "peak": 0.0},
-    {"name": "Bass", "vol": 0.9, "pan": 0.0, "color": Colors.blueAccent, "mute": false, "solo": false, "peak": 0.0},
-    {"name": "Synth", "vol": 0.65, "pan": 0.4, "color": Colors.purpleAccent, "mute": false, "solo": false, "peak": 0.0},
-    {"name": "Vox", "vol": 0.85, "pan": 0.0, "color": Colors.greenAccent, "mute": false, "solo": false, "peak": 0.0},
+    {"name": "Kick", "vol": 0.8, "pan": 0.0, "color": Colors.redAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 0},
+    {"name": "Snare", "vol": 0.75, "pan": 0.1, "color": Colors.orangeAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 0},
+    {"name": "HiHat", "vol": 0.6, "pan": -0.3, "color": Colors.yellowAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 0},
+    {"name": "Bass", "vol": 0.9, "pan": 0.0, "color": Colors.blueAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 32}, // Acoustic Bass
+    {"name": "Synth", "vol": 0.65, "pan": 0.4, "color": Colors.purpleAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 80}, // Synth Lead
+    {"name": "Vox", "vol": 0.85, "pan": 0.0, "color": Colors.greenAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 52}, // Choir Aahs
   ];
 
   int _activeStepIndex = 0;
@@ -127,10 +128,23 @@ class _DawWorkspaceState extends State<DawWorkspace> {
       debugPrint("SriDAW: initialize() returned: $success");
 
       if (success) {
+        // Extract SoundFont and load it
+        try {
+          const platform = MethodChannel('com.ram.sridaw/assets');
+          final String? sfPath = await platform.invokeMethod('extractSoundFont');
+          if (sfPath != null) {
+            bool sfLoaded = _audioBridge?.loadSoundFont(sfPath) ?? false;
+            debugPrint("SriDAW: SoundFont loaded: $sfLoaded");
+          }
+        } catch (e) {
+          debugPrint("SriDAW: Failed to extract/load SoundFont: $e");
+        }
+
         _audioBridge?.setVolume(_masterVolume);
         for (int i = 0; i < _channels.length; i++) {
           _audioBridge?.setTrackVolume(i, _channels[i]["vol"]);
           _audioBridge?.setTrackMute(i, _channels[i]["mute"]);
+          _audioBridge?.setTrackInstrument(i, _channels[i]["instrument"]);
         }
         setState(() {
           _isEngineReady = true;
@@ -180,7 +194,7 @@ class _DawWorkspaceState extends State<DawWorkspace> {
       allowedExtensions: ['mid', 'midi'],
     );
 
-    if (files != null && files.isNotEmpty) {
+    if (files.isNotEmpty) {
       final String? path = files.single.path;
       if (path != null) {
         bool success = _audioBridge?.loadMidiFile(path) ?? false;
@@ -250,8 +264,8 @@ class _DawWorkspaceState extends State<DawWorkspace> {
     );
   }
 
-  // Sequencer Grid: [TrackIndex][StepIndex] -> true/false
-  final List<List<bool>> _stepGrid = List.generate(6, (_) => List.filled(16, false));
+  final List<List<List<bool>>> _pianoRoll = List.generate(6, (_) => List.generate(24, (_) => List.generate(16, (_) => false)));
+  int _selectedTrackIndex = 0;
   int _bpm = 120;
 
   void _syncSequencerToEngine() {
@@ -259,18 +273,18 @@ class _DawWorkspaceState extends State<DawWorkspace> {
     
     _audioBridge!.clearMidiSequence();
     
-    // Calculate step duration based on BPM (16th notes = 4 steps per beat)
     double beatDuration = 60.0 / _bpm;
     double stepDuration = beatDuration / 4.0;
     
-    // Set total loop duration (16 steps = 4 beats = 1 bar)
     _audioBridge!.setLoopDuration(beatDuration * 4.0);
     
-    for (int t = 0; t < _stepGrid.length; t++) {
-      for (int s = 0; s < 16; s++) {
-        if (_stepGrid[t][s]) {
-          int noteNumber = 60 + (t * 2); 
-          _audioBridge!.addMidiNote(noteNumber, s * stepDuration, stepDuration, 0.8);
+    for (int t = 0; t < _channels.length; t++) {
+      for (int n = 0; n < 24; n++) {
+        for (int s = 0; s < 16; s++) {
+          if (_pianoRoll[t][n][s]) {
+            int noteNumber = 48 + n; 
+            _audioBridge!.addMidiNote(noteNumber, s * stepDuration, stepDuration, 0.8);
+          }
         }
       }
     }
@@ -286,7 +300,20 @@ class _DawWorkspaceState extends State<DawWorkspace> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("16-STEP SEQUENCER", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
+                DropdownButton<int>(
+                  value: _selectedTrackIndex,
+                  dropdownColor: const Color(0xFF1A1A1A),
+                  underline: const SizedBox(),
+                  items: List.generate(_channels.length, (i) {
+                    return DropdownMenuItem<int>(
+                      value: i,
+                      child: Text("PIANO ROLL: ${_channels[i]['name']}", style: TextStyle(fontWeight: FontWeight.bold, color: _channels[i]['color'])),
+                    );
+                  }),
+                  onChanged: (val) {
+                    if (val != null) setState(() => _selectedTrackIndex = val);
+                  }
+                ),
                 
                 // BPM Control
                 Row(
@@ -330,38 +357,49 @@ class _DawWorkspaceState extends State<DawWorkspace> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _channels.length,
-              itemBuilder: (context, index) {
-                var channel = _channels[index];
+              itemCount: 24,
+              itemBuilder: (context, noteIndex) {
+                int displayNoteIndex = 23 - noteIndex; 
+                int midiNote = 48 + displayNoteIndex;
+                String noteName = _getNoteName(midiNote);
+                var channel = _channels[_selectedTrackIndex];
+                
                 return Container(
-                  height: 60,
-                  margin: const EdgeInsets.only(bottom: 2),
+                  height: 30,
+                  margin: const EdgeInsets.only(bottom: 1),
                   color: const Color(0xFF222222),
                   child: Row(
                     children: [
-                      // Track Header
+                      // Piano Key Header
                       Container(
-                        width: 100,
-                        padding: const EdgeInsets.all(8),
+                        width: 60,
+                        padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A1A1A),
+                          color: noteName.contains('#') ? Colors.black : Colors.white,
                           border: Border(right: BorderSide(color: channel["color"], width: 4)),
                         ),
-                        child: Text(channel["name"], style: const TextStyle(fontWeight: FontWeight.bold)),
+                        alignment: Alignment.centerRight,
+                        child: Text(noteName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: noteName.contains('#') ? Colors.white : Colors.black)),
                       ),
                       // Interactive 16-Step Grid
                       Expanded(
                         child: Row(
                           children: List.generate(16, (stepIndex) {
-                            bool isActive = _stepGrid[index][stepIndex];
+                            bool isActive = _pianoRoll[_selectedTrackIndex][displayNoteIndex][stepIndex];
                             bool isPlayingNow = _isPlaying && (stepIndex == _activeStepIndex);
                             
                             return Expanded(
                               child: GestureDetector(
                                 onTap: () {
                                   setState(() {
-                                    _stepGrid[index][stepIndex] = !isActive;
+                                    _pianoRoll[_selectedTrackIndex][displayNoteIndex][stepIndex] = !isActive;
                                   });
+                                  if (!isActive && _audioBridge != null) {
+                                    _audioBridge?.playPreviewNote(_selectedTrackIndex, midiNote, 0.8);
+                                    Future.delayed(const Duration(milliseconds: 200), () {
+                                      _audioBridge?.playPreviewNote(_selectedTrackIndex, midiNote, 0.0);
+                                    });
+                                  }
                                 },
                                 child: Container(
                                   margin: const EdgeInsets.all(1),
@@ -391,6 +429,13 @@ class _DawWorkspaceState extends State<DawWorkspace> {
         ],
       ),
     );
+  }
+
+  String _getNoteName(int midiNote) {
+    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    int octave = (midiNote ~/ 12) - 1;
+    int noteIndex = midiNote % 12;
+    return '${noteNames[noteIndex]}$octave';
   }
 
   Widget _buildMixerView() {
@@ -439,25 +484,24 @@ class _DawWorkspaceState extends State<DawWorkspace> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.folder_open, size: 14),
+                PopupMenuButton<int>(
+                  icon: const Icon(Icons.piano, size: 14),
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () async {
-                    List<PlatformFile>? files = await FilePicker.pickFiles(
-                      type: FileType.custom,
-                      allowedExtensions: ['wav', 'aiff', 'mp3'],
-                    );
-                    if (files != null && files.isNotEmpty) {
-                      final String? samplePath = files.single.path;
-                      if (samplePath != null) {
-                        bool success = _audioBridge?.loadTrackSample(index, samplePath) ?? false;
-                        if (success && mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Loaded sample into ${channel["name"]}')));
-                        }
-                      }
-                    }
+                  onSelected: (int instrument) {
+                    setState(() {
+                      channel["instrument"] = instrument;
+                      _audioBridge?.setTrackInstrument(index, instrument);
+                    });
                   },
+                  itemBuilder: (BuildContext context) => <PopupMenuEntry<int>>[
+                    const PopupMenuItem<int>(value: 0, child: Text('0: Grand Piano')),
+                    const PopupMenuItem<int>(value: 16, child: Text('16: Drawbar Organ')),
+                    const PopupMenuItem<int>(value: 24, child: Text('24: Acoustic Guitar')),
+                    const PopupMenuItem<int>(value: 32, child: Text('32: Acoustic Bass')),
+                    const PopupMenuItem<int>(value: 48, child: Text('48: String Ensemble')),
+                    const PopupMenuItem<int>(value: 56, child: Text('56: Trumpet')),
+                    const PopupMenuItem<int>(value: 80, child: Text('80: Synth Lead')),
+                  ],
                 )
               ],
             ),

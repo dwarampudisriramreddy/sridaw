@@ -1,12 +1,39 @@
 package com.ram.sridaw
 
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 import android.os.Bundle
 import android.util.Log
 import java.io.File
+import java.io.FileOutputStream
 import java.io.FileWriter
 
 class MainActivity : FlutterActivity() {
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.ram.sridaw/assets").setMethodCallHandler { call, result ->
+            if (call.method == "extractSoundFont") {
+                try {
+                    val sfName = "soundfonts/GeneralUser-GS.sf2"
+                    val outFile = File(context.cacheDir, "GeneralUser-GS.sf2")
+                    if (!outFile.exists()) {
+                        val inputStream = context.assets.open(sfName)
+                        val outputStream = FileOutputStream(outFile)
+                        inputStream.copyTo(outputStream)
+                        inputStream.close()
+                        outputStream.close()
+                    }
+                    result.success(outFile.absolutePath)
+                } catch (e: Exception) {
+                    result.error("ERROR", e.message, null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+    }
 
     companion object {
         private const val TAG = "SriDAW"

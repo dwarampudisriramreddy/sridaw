@@ -8,6 +8,8 @@
 #include <memory>
 #include <vector>
 
+class GMSynthProcessor; // Forward declaration
+
 struct TrackData {
     float volume = 1.0f;
     float pan = 0.0f;
@@ -15,7 +17,7 @@ struct TrackData {
     bool solo = false;
     float lastPeakLevel = 0.0f;
     
-    // For VST / Instrument Hosting
+    // For VST / Instrument Hosting (if used in future)
     juce::AudioProcessorGraph::Node::Ptr synthNode;
     juce::AudioProcessorGraph::Node::Ptr gainNode;
 };
@@ -35,6 +37,8 @@ public:
     void setTrackMute(int index, bool mute);
     void setTrackSolo(int index, bool solo);
     void setTrackPan(int index, float pan);
+    void setTrackInstrument(int index, int program);
+    
     float getTrackPeakLevel(int index);
     
     double getPlayheadTime() const { return currentPlayheadTime; }
@@ -42,11 +46,12 @@ public:
     void playDemo(bool play);
 
     bool loadMidiFile(const juce::String& filePath);
-    bool loadTrackSample(int trackIndex, const juce::String& filePath);
+    bool loadSoundFont(const juce::String& filePath);
     bool loadVstPlugin(int trackIndex, const juce::String& pluginPath);
 
     void clearMidiSequence();
-    void addMidiNote(int noteNumber, double startSeconds, double durationSeconds, float velocity);
+    void addMidiNote(int noteNumber, double startSeconds, double durationSeconds, float velocity, int channel = 0);
+    void playPreviewNote(int channel, int noteNumber, float velocity);
     void setLoopDuration(double loopSeconds);
 
     // AudioIODeviceCallback overrides
@@ -60,6 +65,9 @@ private:
     
     juce::AudioProcessorGraph::Node::Ptr audioOutputNode;
     juce::AudioProcessorGraph::Node::Ptr midiInputNode;
+    juce::AudioProcessorGraph::Node::Ptr gmSynthNode;
+    
+    GMSynthProcessor* gmSynthProcessor = nullptr; // Unowned pointer to the inner processor
     
     float masterVolume = 1.0f;
     bool isPlaying = false;

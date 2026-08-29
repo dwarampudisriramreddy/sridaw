@@ -1,12 +1,11 @@
 #include "audio_engine.h"
-#include "synth_processor.h"
-#include "gain_pan_processor.h"
+#include "gm_synth_processor.h"
 #include <iostream>
 
 AudioEngine::AudioEngine() {
     deviceManager = std::make_unique<juce::AudioDeviceManager>();
     mainGraph = std::make_unique<juce::AudioProcessorGraph>();
-    tracks.resize(6);
+    tracks.resize(16); // Up to 16 tracks for GM
 }
 
 AudioEngine::~AudioEngine() {
@@ -25,33 +24,19 @@ bool AudioEngine::initialize() {
     audioOutputNode = mainGraph->addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(juce::AudioProcessorGraph::AudioGraphIOProcessor::audioOutputNode));
     midiInputNode = mainGraph->addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(juce::AudioProcessorGraph::AudioGraphIOProcessor::midiInputNode));
     
-    for (int i = 0; i < tracks.size(); ++i) {
-        // Synth Node
-        auto synth = std::make_unique<BuiltInSynthProcessor>();
-        tracks[i].synthNode = mainGraph->addNode(std::move(synth));
-        
-        // Gain/Pan Node
-        auto gainPan = std::make_unique<GainPanProcessor>();
-        gainPan->setVolume(tracks[i].volume);
-        gainPan->setPan(tracks[i].pan);
-        gainPan->setMute(tracks[i].mute);
-        tracks[i].gainNode = mainGraph->addNode(std::move(gainPan));
-        
-        // Connect MIDI Input -> Synth MIDI Input
-        mainGraph->addConnection({ { midiInputNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
-                                   { tracks[i].synthNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
-                                   
-        // Connect Synth Audio Output -> Gain/Pan Audio Input
-        for (int ch = 0; ch < 2; ++ch) {
-            mainGraph->addConnection({ { tracks[i].synthNode->nodeID, ch },
-                                       { tracks[i].gainNode->nodeID, ch } });
-        }
-        
-        // Connect Gain/Pan Audio Output -> Master Output
-        for (int ch = 0; ch < 2; ++ch) {
-            mainGraph->addConnection({ { tracks[i].gainNode->nodeID, ch },
-                                       { audioOutputNode->nodeID, ch } });
-        }
+    // Create the single GM Synth node
+    auto gmSynth = std::make_unique<GMSynthProcessor>();
+    gmSynthProcessor = gmSynth.get();
+    gmSynthNode = mainGraph->addNode(std::move(gmSynth));
+    
+    // Connect MIDI Input -> GM Synth MIDI Input
+    mainGraph->addConnection({ { midiInputNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
+                               { gmSynthNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
+                               
+    // Connect GM Synth Audio Output -> Master Output
+    for (int ch = 0; ch < 2; ++ch) {
+        mainGraph->addConnection({ { gmSynthNode->nodeID, ch },
+                                   { audioOutputNode->nodeID, ch } });
     }
     
     deviceManager->addAudioCallback(this);
@@ -68,6 +53,9 @@ void AudioEngine::shutdown() {
 
 void AudioEngine::setMasterVolume(float volume) {
     masterVolume = juce::jlimit(0.0f, 1.0f, volume);
+    if (gmSynthProcessor) {
+        gmSynthProcessor->setMasterGain(masterVolume);
+    }
 }
 
 float AudioEngine::getMasterVolume() const { return masterVolume; }
@@ -75,10 +63,8 @@ float AudioEngine::getMasterVolume() const { return masterVolume; }
 void AudioEngine::setTrackVolume(int index, float volume) {
     if (index >= 0 && index < tracks.size()) {
         tracks[index].volume = volume;
-        if (tracks[index].gainNode) {
-            if (auto* gp = dynamic_cast<GainPanProcessor*>(tracks[index].gainNode->getProcessor())) {
-                gp->setVolume(volume);
-            }
+        if (gmSynthProcessor) {
+            gmSynthProcessor->setChannelVolume(index, volume);
         }
     }
 }
@@ -86,36 +72,52 @@ void AudioEngine::setTrackVolume(int index, float volume) {
 void AudioEngine::setTrackMute(int index, bool mute) {
     if (index >= 0 && index < tracks.size()) {
         tracks[index].mute = mute;
-        if (tracks[index].gainNode) {
-            if (auto* gp = dynamic_cast<GainPanProcessor*>(tracks[index].gainNode->getProcessor())) {
-                gp->setMute(mute);
-            }
+        if (gmSynthProcessor) {
+            gmSynthProcessor->setChannelMute(index, mute);
         }
     }
 }
 
 void AudioEngine::setTrackSolo(int index, bool solo) {
-    if (index >= 0 && index < tracks.size()) tracks[index].solo = solo;
+    if (index >= 0 && index < tracks.size()) {
+        tracks[index].solo = solo;
+        
+        bool anySolo = false;
+        for (const auto& t : tracks) {
+            if (t.solo) {
+                anySolo = true;
+                break;
+            }
+        }
+        
+        if (gmSynthProcessor) {
+            gmSynthProcessor->setChannelSolo(index, solo, anySolo);
+        }
+    }
 }
 
 void AudioEngine::setTrackPan(int index, float pan) {
     if (index >= 0 && index < tracks.size()) {
         tracks[index].pan = pan;
-        if (tracks[index].gainNode) {
-            if (auto* gp = dynamic_cast<GainPanProcessor*>(tracks[index].gainNode->getProcessor())) {
-                gp->setPan(pan);
-            }
+        if (gmSynthProcessor) {
+            gmSynthProcessor->setChannelPan(index, pan);
+        }
+    }
+}
+
+void AudioEngine::setTrackInstrument(int index, int program) {
+    if (index >= 0 && index < tracks.size()) {
+        if (gmSynthProcessor) {
+            gmSynthProcessor->setChannelProgram(index, program);
         }
     }
 }
 
 float AudioEngine::getTrackPeakLevel(int index) {
-    if (index >= 0 && index < tracks.size()) {
-        if (tracks[index].gainNode) {
-            if (auto* gp = dynamic_cast<GainPanProcessor*>(tracks[index].gainNode->getProcessor())) {
-                return gp->getLastPeakLevel();
-            }
-        }
+    // In the shared GM model, we don't have individual audio nodes per track,
+    // so we return the master peak level for Track 0, or just 0.
+    if (index == 0 && gmSynthProcessor) {
+        return gmSynthProcessor->getLastPeakLevel();
     }
     return 0.0f;
 }
@@ -155,11 +157,9 @@ bool AudioEngine::loadMidiFile(const juce::String& filePath) {
     return false;
 }
 
-bool AudioEngine::loadTrackSample(int trackIndex, const juce::String& filePath) {
-    if (trackIndex >= 0 && trackIndex < tracks.size() && tracks[trackIndex].synthNode) {
-        if (auto* sampler = dynamic_cast<BuiltInSynthProcessor*>(tracks[trackIndex].synthNode->getProcessor())) {
-            return sampler->loadSample(filePath);
-        }
+bool AudioEngine::loadSoundFont(const juce::String& filePath) {
+    if (gmSynthProcessor) {
+        return gmSynthProcessor->loadSoundFont(filePath);
     }
     return false;
 }
@@ -175,14 +175,24 @@ void AudioEngine::clearMidiSequence() {
     currentMidiSequence->clear();
 }
 
-void AudioEngine::addMidiNote(int noteNumber, double startSeconds, double durationSeconds, float velocity) {
+void AudioEngine::addMidiNote(int noteNumber, double startSeconds, double durationSeconds, float velocity, int channel) {
     if (!currentMidiSequence) {
         currentMidiSequence = std::make_unique<juce::MidiMessageSequence>();
     }
     
-    currentMidiSequence->addEvent(juce::MidiMessage::noteOn(1, noteNumber, velocity), startSeconds);
-    currentMidiSequence->addEvent(juce::MidiMessage::noteOff(1, noteNumber), startSeconds + durationSeconds);
+    currentMidiSequence->addEvent(juce::MidiMessage::noteOn(channel + 1, noteNumber, velocity), startSeconds);
+    currentMidiSequence->addEvent(juce::MidiMessage::noteOff(channel + 1, noteNumber), startSeconds + durationSeconds);
     currentMidiSequence->updateMatchedPairs();
+}
+
+void AudioEngine::playPreviewNote(int channel, int noteNumber, float velocity) {
+    if (gmSynthProcessor) {
+        if (velocity > 0.0f) {
+            gmSynthProcessor->playNote(channel, noteNumber, static_cast<int>(velocity * 127.0f));
+        } else {
+            gmSynthProcessor->stopNote(channel, noteNumber);
+        }
+    }
 }
 
 void AudioEngine::setLoopDuration(double loopSeconds) {
@@ -212,7 +222,6 @@ void AudioEngine::audioDeviceIOCallbackWithContext(const float* const* inputChan
         double blockStartTime = currentPlayheadTime;
         double blockEndTime = blockStartTime + (numSamples / sampleRate);
         
-        // Find events in this time window and add to MidiBuffer
         for (int i = 0; i < currentMidiSequence->getNumEvents(); ++i) {
             auto* evt = currentMidiSequence->getEventPointer(i);
             if (evt->message.getTimeStamp() >= blockStartTime && evt->message.getTimeStamp() < blockEndTime) {
@@ -223,32 +232,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(const float* const* inputChan
         
         currentPlayheadTime = blockEndTime;
         
-        // Loop based on dynamic loopDuration
         if (currentPlayheadTime > loopDuration) {
             currentPlayheadTime = 0.0;
         }
     }
     
-    // Process the graph (MIDI goes into synths -> Audio comes out to outputBuffer)
     mainGraph->processBlock(outputBuffer, midiBuffer);
-    
-    // Apply Mixer Levels and compute Peaks
-    for (int ch = 0; ch < outputBuffer.getNumChannels(); ++ch) {
-        float* channelData = outputBuffer.getWritePointer(ch);
-        float peak = 0.0f;
-        
-        for (int s = 0; s < numSamples; ++s) {
-            // Very simple master mix since all synths output straight to outputBuffer right now
-            channelData[s] *= masterVolume; 
-            
-            float absSample = std::abs(channelData[s]);
-            if (absSample > peak) peak = absSample;
-        }
-        
-        // In a real mixer, we'd process each track's output buffer individually.
-        // For the demo, we'll assign the master peak to Track 0 so the UI reacts.
-        if (ch == 0) {
-            tracks[0].lastPeakLevel = peak;
-        }
-    }
 }

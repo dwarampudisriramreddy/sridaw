@@ -13,10 +13,66 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(juce)
 
+# ---------------------------------------------------------------------------
+# FluidSynth (General MIDI soft synthesizer)
+#
+# Since FluidSynth provides its own CMake project that uses a bunch of cache
+# variables (options), we populate the source and drop it in as a subdirectory.
+# We override the caches so that:
+#   * it does NOT need GLib (osal=cpp11, added in 2.5.x)
+#   * it does NOT pull in libinstpatch / libsndfile / any OS audio driver
+#   * it builds as a STATIC library (libfluidsynth.a) so it is linked straight
+#     into libsridaw_juce.so for Dart FFI.
+# ---------------------------------------------------------------------------
+set(osal "cpp11" CACHE STRING "OS abstraction layer to use (no GLib)" FORCE)
+
+foreach(opt IN ITEMS
+    enable-alsa
+    enable-aufile
+    enable-coreaudio
+    enable-coremidi
+    enable-dbus
+    enable-dsound
+    enable-framework
+    enable-jack
+    enable-ladspa
+    enable-libinstpatch
+    enable-libsndfile
+    enable-midishare
+    enable-network
+    enable-oss
+    enable-pipewire
+    enable-portaudio
+    enable-pulseaudio
+    enable-readline
+    enable-sdl3
+    enable-systemd
+    enable-waveout
+    enable-winmidi
+    enable-wasapi
+    )
+    set(${opt} OFF CACHE BOOL "" FORCE)
+endforeach()
+
+# float DSP output (matches JUCE's float32 buffers directly)
+set(enable-floats ON CACHE BOOL "" FORCE)
+# we do not want OpenMP on Android (FluidSynth ships Android binaries without it)
+set(enable-openmp OFF CACHE BOOL "" FORCE)
+# static library so everything lands inside libsridaw_juce.so
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    fluidsynth
+    GIT_REPOSITORY https://github.com/FluidSynth/fluidsynth.git
+    GIT_TAG        v2.5.7
+)
+FetchContent_MakeAvailable(fluidsynth)
+
 # Add our bridge library
 add_library(sridaw_juce SHARED
     src/audio_engine.cpp
-    src/synth_processor.cpp
+    src/gm_synth_processor.cpp
     src/gain_pan_processor.cpp
     src/ffi_bridge.cpp
 )
@@ -30,6 +86,7 @@ target_link_libraries(sridaw_juce PRIVATE
     juce::juce_core
     juce::juce_data_structures
     juce::juce_events
+    libfluidsynth
 )
 
 # For JUCE, we need to add the module headers to include directories

@@ -90,11 +90,15 @@ FFI_EXPORT bool loadMidiFile(const char* path) {
     return false;
 }
 
-FFI_EXPORT bool loadTrackSample(int trackIndex, const char* path) {
+FFI_EXPORT bool loadSoundFont(const char* path) {
     if (gAudioEngine && path) {
-        return gAudioEngine->loadTrackSample(trackIndex, juce::String(path));
+        return gAudioEngine->loadSoundFont(juce::String(path));
     }
     return false;
+}
+
+FFI_EXPORT void setTrackInstrument(int index, int program) {
+    if (gAudioEngine) gAudioEngine->setTrackInstrument(index, program);
 }
 
 FFI_EXPORT void clearMidiSequence() {
@@ -107,6 +111,10 @@ FFI_EXPORT void addMidiNote(int noteNumber, double startSeconds, double duration
 
 FFI_EXPORT void setLoopDuration(double loopSeconds) {
     if (gAudioEngine) gAudioEngine->setLoopDuration(loopSeconds);
+}
+
+FFI_EXPORT void playPreviewNote(int channel, int noteNumber, float velocity) {
+    if (gAudioEngine) gAudioEngine->playPreviewNote(channel, noteNumber, velocity);
 }
 
 FFI_EXPORT double getPlayheadTime() {

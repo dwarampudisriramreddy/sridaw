@@ -20,6 +20,9 @@ typedef _SetTrackVolumeDart = void Function(int index, double volume);
 typedef _SetTrackMuteC = ffi.Void Function(ffi.Int32 index, ffi.Bool mute);
 typedef _SetTrackMuteDart = void Function(int index, bool mute);
 
+typedef _SetTrackInstrumentC = ffi.Void Function(ffi.Int32 index, ffi.Int32 program);
+typedef _SetTrackInstrumentDart = void Function(int index, int program);
+
 typedef _GetTrackPeakLevelC = ffi.Float Function(ffi.Int32 index);
 typedef _GetTrackPeakLevelDart = double Function(int index);
 
@@ -29,14 +32,17 @@ typedef _PlayDemoDart = void Function(bool play);
 typedef _LoadMidiFileC = ffi.Bool Function(ffi.Pointer<Utf8> path);
 typedef _LoadMidiFileDart = bool Function(ffi.Pointer<Utf8> path);
 
-typedef _LoadTrackSampleC = ffi.Bool Function(ffi.Int32 index, ffi.Pointer<Utf8> path);
-typedef _LoadTrackSampleDart = bool Function(int index, ffi.Pointer<Utf8> path);
+typedef _LoadSoundFontC = ffi.Bool Function(ffi.Pointer<Utf8> path);
+typedef _LoadSoundFontDart = bool Function(ffi.Pointer<Utf8> path);
 
 typedef _ClearMidiSequenceC = ffi.Void Function();
 typedef _ClearMidiSequenceDart = void Function();
 
 typedef _AddMidiNoteC = ffi.Void Function(ffi.Int32 noteNumber, ffi.Double startSeconds, ffi.Double durationSeconds, ffi.Float velocity);
 typedef _AddMidiNoteDart = void Function(int noteNumber, double startSeconds, double durationSeconds, double velocity);
+
+typedef _PlayPreviewNoteC = ffi.Void Function(ffi.Int32 channel, ffi.Int32 noteNumber, ffi.Float velocity);
+typedef _PlayPreviewNoteDart = void Function(int channel, int noteNumber, double velocity);
 
 typedef _SetLoopDurationC = ffi.Void Function(ffi.Double loopSeconds);
 typedef _SetLoopDurationDart = void Function(double loopSeconds);
@@ -54,13 +60,15 @@ class AudioEngineBridge {
   
   late final _SetTrackVolumeDart _setTrackVolume;
   late final _SetTrackMuteDart _setTrackMute;
+  late final _SetTrackInstrumentDart _setTrackInstrument;
   late final _GetTrackPeakLevelDart _getTrackPeakLevel;
   late final _PlayDemoDart _playDemo;
   late final _LoadMidiFileDart _loadMidiFile;
-  late final _LoadTrackSampleDart _loadTrackSample;
+  late final _LoadSoundFontDart _loadSoundFont;
   
   late final _ClearMidiSequenceDart _clearMidiSequence;
   late final _AddMidiNoteDart _addMidiNote;
+  late final _PlayPreviewNoteDart _playPreviewNote;
   late final _SetLoopDurationDart _setLoopDuration;
   late final _GetPlayheadTimeDart _getPlayheadTime;
 
@@ -82,12 +90,14 @@ class AudioEngineBridge {
     
     _setTrackVolume = _lib.lookupFunction<_SetTrackVolumeC, _SetTrackVolumeDart>('setTrackVolume');
     _setTrackMute = _lib.lookupFunction<_SetTrackMuteC, _SetTrackMuteDart>('setTrackMute');
+    _setTrackInstrument = _lib.lookupFunction<_SetTrackInstrumentC, _SetTrackInstrumentDart>('setTrackInstrument');
     _getTrackPeakLevel = _lib.lookupFunction<_GetTrackPeakLevelC, _GetTrackPeakLevelDart>('getTrackPeakLevel');
     _playDemo = _lib.lookupFunction<_PlayDemoC, _PlayDemoDart>('playDemo');
     _loadMidiFile = _lib.lookupFunction<_LoadMidiFileC, _LoadMidiFileDart>('loadMidiFile');
-    _loadTrackSample = _lib.lookupFunction<_LoadTrackSampleC, _LoadTrackSampleDart>('loadTrackSample');
+    _loadSoundFont = _lib.lookupFunction<_LoadSoundFontC, _LoadSoundFontDart>('loadSoundFont');
     _clearMidiSequence = _lib.lookupFunction<_ClearMidiSequenceC, _ClearMidiSequenceDart>('clearMidiSequence');
     _addMidiNote = _lib.lookupFunction<_AddMidiNoteC, _AddMidiNoteDart>('addMidiNote');
+    _playPreviewNote = _lib.lookupFunction<_PlayPreviewNoteC, _PlayPreviewNoteDart>('playPreviewNote');
     _setLoopDuration = _lib.lookupFunction<_SetLoopDurationC, _SetLoopDurationDart>('setLoopDuration');
     _getPlayheadTime = _lib.lookupFunction<_GetPlayheadTimeC, _GetPlayheadTimeDart>('getPlayheadTime');
   }
@@ -100,6 +110,7 @@ class AudioEngineBridge {
   
   void setTrackVolume(int index, double volume) => _setTrackVolume(index, volume);
   void setTrackMute(int index, bool mute) => _setTrackMute(index, mute);
+  void setTrackInstrument(int index, int program) => _setTrackInstrument(index, program);
   double getTrackPeakLevel(int index) => _getTrackPeakLevel(index);
   
   void playDemo(bool play) => _playDemo(play);
@@ -111,9 +122,9 @@ class AudioEngineBridge {
     return result;
   }
 
-  bool loadTrackSample(int trackIndex, String path) {
+  bool loadSoundFont(String path) {
     final pathPtr = path.toNativeUtf8();
-    final result = _loadTrackSample(trackIndex, pathPtr);
+    final result = _loadSoundFont(pathPtr);
     malloc.free(pathPtr);
     return result;
   }
@@ -122,6 +133,10 @@ class AudioEngineBridge {
   
   void addMidiNote(int noteNumber, double startSeconds, double durationSeconds, double velocity) {
     _addMidiNote(noteNumber, startSeconds, durationSeconds, velocity);
+  }
+  
+  void playPreviewNote(int channel, int noteNumber, double velocity) {
+    _playPreviewNote(channel, noteNumber, velocity);
   }
   
   void setLoopDuration(double loopSeconds) {
