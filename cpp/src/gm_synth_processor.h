@@ -41,9 +41,6 @@ public:
     void allSoundsOff();
     float getLastPeakLevel() const { return lastPeakLevel; }
 
-    bool isSoundFontLoaded() const { return soundFontLoaded; }
-    juce::String getSoundFontPath() const { return soundFontPath; }
-
     // JUCE AudioProcessor boilerplate
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;

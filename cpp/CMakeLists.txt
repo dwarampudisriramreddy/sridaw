@@ -33,6 +33,7 @@ foreach(opt IN ITEMS
     enable-coremidi
     enable-dbus
     enable-dsound
+    enable-examples
     enable-framework
     enable-jack
     enable-ladspa
@@ -47,12 +48,16 @@ foreach(opt IN ITEMS
     enable-readline
     enable-sdl3
     enable-systemd
+    enable-tests
     enable-waveout
     enable-winmidi
     enable-wasapi
     )
     set(${opt} OFF CACHE BOOL "" FORCE)
 endforeach()
+
+# We only want libfluidsynth; skip FluidSynth's own example/test subprojects.
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
 # float DSP output (matches JUCE's float32 buffers directly)
 set(enable-floats ON CACHE BOOL "" FORCE)
