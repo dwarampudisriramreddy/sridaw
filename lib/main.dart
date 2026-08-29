@@ -743,87 +743,96 @@ class PianoRollWidget extends StatelessWidget {
     final double gridH = noteCount * _rowHeight;
     final double gridW = kArrangementBars * kStepsPerBar * _stepWidth;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Piano keyboard (vertical, aligned with grid rows)
-        SizedBox(
-          width: _keyWidth,
-          height: gridH,
-          child: Column(
-            children: List.generate(noteCount, (i) {
-              final note = kHighNote - i;
-              final black = const {1, 3, 6, 8, 10}.contains(note % 12);
-              return GestureDetector(
-                onTapDown: (_) => onPreviewNote(note, 0.85),
-                child: Container(
-                  height: _rowHeight,
-                  decoration: BoxDecoration(
-                    color: black ? const Color(0xFF1A1A1E) : const Color(0xFF2A2A30),
-                    border: Border(
-                      bottom: BorderSide(color: Colors.white.withOpacity(0.04)),
-                      right: const BorderSide(color: Colors.white10),
-                    ),
-                  ),
-                  padding: const EdgeInsets.only(right: 6),
-                  alignment: Alignment.centerRight,
-                  child: black
-                      ? null
-                      : Text(_noteLabel(note),
-                          style: const TextStyle(fontSize: 9, color: Color(0xFF8A8A93))),
-                ),
-              );
-            }),
-          ),
-        ),
-        // Scrollable grid
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: gridW,
-                height: gridH,
-                child: Stack(
-                  children: [
-                    CustomPaint(
-                      size: Size(gridW, gridH),
-                      painter: _GridPainter(color: color, stepWidth: _stepWidth, rowHeight: _rowHeight,
-                          steps: kArrangementBars * kStepsPerBar, lowNote: kLowNote, highNote: kHighNote),
-                    ),
-                    CustomPaint(
-                      size: Size(gridW, gridH),
-                      painter: _NotesPainter(notes: notes, color: color, stepWidth: _stepWidth,
-                          rowHeight: _rowHeight, lowNote: kLowNote),
-                    ),
-                    if (playheadStep >= 0)
-                      Positioned(
-                        left: playheadStep * _stepWidth.toDouble(),
-                        top: 0,
-                        bottom: 0,
-                        child: Container(width: 2, color: Colors.white.withOpacity(0.7)),
-                      ),
-                    // Tap layer
-                    Positioned.fill(
-                      child: GestureDetector(
-                        onTapDown: (d) {
-                          final int step = (d.localPosition.dx / _stepWidth).floor()
-                              .clamp(0, kArrangementBars * kStepsPerBar - 1);
-                          final int row = (d.localPosition.dy / _rowHeight).floor()
-                              .clamp(0, kHighNote - kLowNote);
-                          final int note = kHighNote - row;
-                          onToggleNote(note, step);
-                        },
-                      ),
-                    ),
-                  ],
+    final Widget keyboard = SizedBox(
+      width: _keyWidth,
+      height: gridH,
+      child: Column(
+        children: List.generate(noteCount, (i) {
+          final note = kHighNote - i;
+          final black = const {1, 3, 6, 8, 10}.contains(note % 12);
+          return GestureDetector(
+            onTapDown: (_) => onPreviewNote(note, 0.85),
+            child: Container(
+              height: _rowHeight,
+              decoration: BoxDecoration(
+                color: black ? const Color(0xFF1A1A1E) : const Color(0xFF2A2A30),
+                border: Border(
+                  bottom: BorderSide(color: Colors.white.withOpacity(0.04)),
+                  right: const BorderSide(color: Colors.white10),
                 ),
               ),
+              padding: const EdgeInsets.only(right: 6),
+              alignment: Alignment.centerRight,
+              child: black
+                  ? null
+                  : Text(_noteLabel(note),
+                      style: const TextStyle(fontSize: 9, color: Color(0xFF8A8A93))),
+            ),
+          );
+        }),
+      ),
+    );
+
+    final Widget grid = SizedBox(
+      width: gridW,
+      height: gridH,
+      child: Stack(
+        children: [
+          CustomPaint(
+            size: Size(gridW, gridH),
+            painter: _GridPainter(color: color, stepWidth: _stepWidth, rowHeight: _rowHeight,
+                steps: kArrangementBars * kStepsPerBar, lowNote: kLowNote, highNote: kHighNote),
+          ),
+          CustomPaint(
+            size: Size(gridW, gridH),
+            painter: _NotesPainter(notes: notes, color: color, stepWidth: _stepWidth,
+                rowHeight: _rowHeight, lowNote: kLowNote),
+          ),
+          if (playheadStep >= 0)
+            Positioned(
+              left: playheadStep * _stepWidth.toDouble(),
+              top: 0,
+              bottom: 0,
+              child: Container(width: 2, color: Colors.white.withOpacity(0.7)),
+            ),
+          // Tap layer
+          Positioned.fill(
+            child: GestureDetector(
+              onTapDown: (d) {
+                final int step = (d.localPosition.dx / _stepWidth).floor()
+                    .clamp(0, kArrangementBars * kStepsPerBar - 1);
+                final int row = (d.localPosition.dy / _rowHeight).floor()
+                    .clamp(0, kHighNote - kLowNote);
+                final int note = kHighNote - row;
+                onToggleNote(note, step);
+              },
             ),
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double gridAreaW = (constraints.maxWidth - _keyWidth).clamp(0.0, constraints.maxWidth);
+        return SingleChildScrollView(
+          scrollDirection: Axis.vertical,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              keyboard,
+              SizedBox(
+                width: gridAreaW,
+                height: gridH,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: grid,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
