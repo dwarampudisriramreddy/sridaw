@@ -47,6 +47,8 @@ public:
 
     bool loadMidiFile(const juce::String& filePath);
     bool loadSoundFont(const juce::String& filePath);
+    bool isSoundFontLoaded() const;
+    juce::String getSoundFontPath() const;
     bool loadVstPlugin(int trackIndex, const juce::String& pluginPath);
 
     void clearMidiSequence();

@@ -97,6 +97,22 @@ FFI_EXPORT bool loadSoundFont(const char* path) {
     return false;
 }
 
+FFI_EXPORT bool isSoundFontLoaded() {
+    if (gAudioEngine) return gAudioEngine->isSoundFontLoaded();
+    return false;
+}
+
+FFI_EXPORT const char* getSoundFontPath() {
+    if (gAudioEngine) {
+        const juce::String& p = gAudioEngine->getSoundFontPath();
+        // Caller must copy; return a strdup'd buffer freed on next call.
+        static juce::String lastPath;
+        lastPath = p;
+        return lastPath.toRawUTF8();
+    }
+    return "";
+}
+
 FFI_EXPORT void setTrackInstrument(int index, int program) {
     if (gAudioEngine) gAudioEngine->setTrackInstrument(index, program);
 }
@@ -105,8 +121,8 @@ FFI_EXPORT void clearMidiSequence() {
     if (gAudioEngine) gAudioEngine->clearMidiSequence();
 }
 
-FFI_EXPORT void addMidiNote(int noteNumber, double startSeconds, double durationSeconds, float velocity) {
-    if (gAudioEngine) gAudioEngine->addMidiNote(noteNumber, startSeconds, durationSeconds, velocity);
+FFI_EXPORT void addMidiNote(int channel, int noteNumber, double startSeconds, double durationSeconds, float velocity) {
+    if (gAudioEngine) gAudioEngine->addMidiNote(noteNumber, startSeconds, durationSeconds, velocity, channel);
 }
 
 FFI_EXPORT void setLoopDuration(double loopSeconds) {

@@ -41,6 +41,9 @@ public:
     void allSoundsOff();
     float getLastPeakLevel() const { return lastPeakLevel; }
 
+    bool isSoundFontLoaded() const { return soundFontLoaded; }
+    juce::String getSoundFontPath() const { return soundFontPath; }
+
     // JUCE AudioProcessor boilerplate
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -62,6 +65,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override {}
 
 private:
+    void createSynth (double sampleRate);
     void sendMidiToSynth (const juce::MidiBuffer& midi);
     void applyChannelMix();
 

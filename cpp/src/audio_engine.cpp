@@ -164,6 +164,15 @@ bool AudioEngine::loadSoundFont(const juce::String& filePath) {
     return false;
 }
 
+bool AudioEngine::isSoundFontLoaded() const {
+    return gmSynthProcessor && gmSynthProcessor->isSoundFontLoaded();
+}
+
+juce::String AudioEngine::getSoundFontPath() const {
+    if (gmSynthProcessor) return gmSynthProcessor->getSoundFontPath();
+    return {};
+}
+
 bool AudioEngine::loadVstPlugin(int trackIndex, const juce::String& pluginPath) {
     return false;
 }

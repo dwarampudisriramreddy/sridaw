@@ -15,6 +15,64 @@ void main() {
   runApp(const DawApp());
 }
 
+/// A single note inside a phrase. `startStep`/`lengthSteps` are in 16th-note steps.
+class NoteEvent {
+  final int note;
+  final int startStep;
+  final int lengthSteps;
+  const NoteEvent(this.note, this.startStep, this.lengthSteps);
+}
+
+/// A DAW track. Owns one phrase (its notes) and a list of bars where that
+/// phrase is placed in the arrangement.
+class Track {
+  String name;
+  int instrument; // GM program number
+  final Color color;
+  double vol;
+  double pan;
+  bool mute;
+  bool solo;
+  double peak;
+  List<NoteEvent> notes;
+  List<int> clips; // arrangement bars where the phrase is placed
+
+  Track({
+    required this.name,
+    required this.instrument,
+    required this.color,
+    this.vol = 0.8,
+    this.pan = 0.0,
+    this.mute = false,
+    this.solo = false,
+    this.peak = 0.0,
+    List<NoteEvent>? notes,
+    List<int>? clips,
+  })  : notes = notes ?? [],
+        clips = clips ?? [];
+}
+
+// Curated GM instrument options.
+const List<Map<String, dynamic>> kInstruments = [
+  {'name': 'Grand Piano', 'program': 0},
+  {'name': 'Bright Piano', 'program': 1},
+  {'name': 'Drawbar Organ', 'program': 16},
+  {'name': 'Acoustic Guitar', 'program': 24},
+  {'name': 'Acoustic Bass', 'program': 32},
+  {'name': 'String Ensemble', 'program': 48},
+  {'name': 'Trumpet', 'program': 56},
+  {'name': 'Saxophone', 'program': 65},
+  {'name': 'Synth Lead', 'program': 80},
+  {'name': 'Pad', 'program': 88},
+  {'name': 'Woodblock', 'program': 115},
+];
+
+// Piano roll range (inclusive MIDI notes).
+const int kLowNote = 48; // C3
+const int kHighNote = 84; // C6
+const int kStepsPerBar = 16; // 16th notes
+const int kArrangementBars = 8;
+
 class DawApp extends StatelessWidget {
   const DawApp({super.key});
 
@@ -24,19 +82,25 @@ class DawApp extends StatelessWidget {
       title: 'Sri DAW',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        scaffoldBackgroundColor: const Color(0xFF0C0C0E),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF00E676),
-          surface: Color(0xFF1E1E1E),
+          primary: Color(0xFF4ADE80),
+          surface: Color(0xFF15151A),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0C0C0E),
+          elevation: 0,
+          scrolledUnderElevation: 0,
         ),
         sliderTheme: SliderThemeData(
-          trackHeight: 8,
-          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
-          overlayShape: const RoundSliderOverlayShape(overlayRadius: 24),
-          activeTrackColor: const Color(0xFF00E676),
-          inactiveTrackColor: Colors.black54,
-          thumbColor: Colors.grey.shade300,
+          trackHeight: 4,
+          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+          overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+          activeTrackColor: const Color(0xFF4ADE80),
+          inactiveTrackColor: Colors.white12,
+          thumbColor: Colors.white,
         ),
+        dividerTheme: const DividerThemeData(color: Colors.white10),
       ),
       home: const DefaultTabController(
         length: 2,
@@ -58,105 +122,40 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   double _masterVolume = 0.8;
   AudioEngineBridge? _audioBridge;
   Timer? _meterTimer;
-  String _loadedMidiName = "Demo C Major Chord";
+  String _loadedMidiName = "";
+  int _bpm = 120;
+  int _noteLength = 2; // steps for newly painted notes
+  int _selectedTrack = 0;
+  int _playheadStep = -1;
+  bool _isEngineReady = false;
 
-  final List<Map<String, dynamic>> _channels = [
-    {"name": "Kick", "vol": 0.8, "pan": 0.0, "color": Colors.redAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 0},
-    {"name": "Snare", "vol": 0.75, "pan": 0.1, "color": Colors.orangeAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 0},
-    {"name": "HiHat", "vol": 0.6, "pan": -0.3, "color": Colors.yellowAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 0},
-    {"name": "Bass", "vol": 0.9, "pan": 0.0, "color": Colors.blueAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 32}, // Acoustic Bass
-    {"name": "Synth", "vol": 0.65, "pan": 0.4, "color": Colors.purpleAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 80}, // Synth Lead
-    {"name": "Vox", "vol": 0.85, "pan": 0.0, "color": Colors.greenAccent, "mute": false, "solo": false, "peak": 0.0, "instrument": 52}, // Choir Aahs
+  final List<Track> _tracks = [
+    Track(
+      name: 'Keys',
+      instrument: 0,
+      color: const Color(0xFF60A5FA),
+      notes: [
+        const NoteEvent(60, 0, 2),
+        const NoteEvent(64, 4, 2),
+        const NoteEvent(67, 8, 2),
+        const NoteEvent(72, 12, 4),
+      ],
+      clips: [0, 2, 4, 6],
+    ),
+    Track(name: 'Bass', instrument: 32, color: const Color(0xFF34D399)),
+    Track(name: 'Strings', instrument: 48, color: const Color(0xFFA78BFA)),
+    Track(name: 'Brass', instrument: 56, color: const Color(0xFFFBBF24)),
+    Track(name: 'Lead', instrument: 80, color: const Color(0xFFF472B6)),
+    Track(name: 'Perc', instrument: 115, color: const Color(0xFFFB923C)),
   ];
 
-  int _activeStepIndex = 0;
-  bool _isEngineReady = false;
+  double get _stepDuration => (60.0 / _bpm) / 4.0;
 
   @override
   void initState() {
     super.initState();
-    
-    // We defer initialization to avoid native Android crashes on startup
-    // before permissions are granted.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initAudioEngine();
-    });
-
-    _meterTimer = Timer.periodic(const Duration(milliseconds: 40), (timer) {
-      if (_isPlaying && _audioBridge != null && _isEngineReady) {
-        // Fetch Peak Levels and Playhead Time
-        double playTime = _audioBridge!.getPlayheadTime();
-        double stepDuration = (60.0 / _bpm) / 4.0;
-        int currentStep = (playTime / stepDuration).floor() % 16;
-        
-        setState(() {
-          _activeStepIndex = currentStep;
-          for (int i = 0; i < _channels.length; i++) {
-            var channel = _channels[i];
-            if (!channel["mute"]) {
-              channel["peak"] = _audioBridge!.getTrackPeakLevel(i);
-            } else {
-              channel["peak"] = 0.0;
-            }
-          }
-        });
-      } else if (!_isPlaying && _channels[0]["peak"] > 0) {
-        setState(() {
-          for (var channel in _channels) {
-            channel["peak"] = 0.0;
-          }
-        });
-      }
-    });
-  }
-
-  Future<void> _initAudioEngine() async {
-    try {
-      // Request microphone permission (needed by JUCE AudioDeviceManager even for output)
-      debugPrint("SriDAW: requesting microphone permission...");
-      await Permission.microphone.request();
-      debugPrint("SriDAW: microphone permission done");
-      // Request storage permission to load files
-      debugPrint("SriDAW: requesting storage permission...");
-      await Permission.storage.request();
-      debugPrint("SriDAW: storage permission done");
-
-      debugPrint("SriDAW: opening AudioEngineBridge...");
-      _audioBridge = AudioEngineBridge();
-      debugPrint("SriDAW: bridge opened, initializing JUCE engine...");
-      bool success = _audioBridge?.initialize() ?? false;
-      debugPrint("SriDAW: initialize() returned: $success");
-
-      if (success) {
-        // Extract SoundFont and load it
-        try {
-          const platform = MethodChannel('com.ram.sridaw/assets');
-          final String? sfPath = await platform.invokeMethod('extractSoundFont');
-          if (sfPath != null) {
-            bool sfLoaded = _audioBridge?.loadSoundFont(sfPath) ?? false;
-            debugPrint("SriDAW: SoundFont loaded: $sfLoaded");
-          }
-        } catch (e) {
-          debugPrint("SriDAW: Failed to extract/load SoundFont: $e");
-        }
-
-        _audioBridge?.setVolume(_masterVolume);
-        for (int i = 0; i < _channels.length; i++) {
-          _audioBridge?.setTrackVolume(i, _channels[i]["vol"]);
-          _audioBridge?.setTrackMute(i, _channels[i]["mute"]);
-          _audioBridge?.setTrackInstrument(i, _channels[i]["instrument"]);
-        }
-        setState(() {
-          _isEngineReady = true;
-        });
-        debugPrint("SriDAW: JUCE Engine loaded successfully!");
-      } else {
-        debugPrint("SriDAW: JUCE Engine failed to initialize internally!");
-      }
-    } catch (e) {
-      debugPrint("SriDAW: JUCE Engine failed to load library: $e");
-      debugPrint("SriDAW: stack: ${StackTrace.current}");
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initAudioEngine());
+    _meterTimer = Timer.periodic(const Duration(milliseconds: 50), _onMeterTick);
   }
 
   @override
@@ -166,540 +165,738 @@ class _DawWorkspaceState extends State<DawWorkspace> {
     super.dispose();
   }
 
+  // ---------------------------------------------------------------------------
+  // Audio engine
+  // ---------------------------------------------------------------------------
+  Future<void> _initAudioEngine() async {
+    try {
+      await Permission.microphone.request();
+      await Permission.storage.request();
+
+      _audioBridge = AudioEngineBridge();
+      bool success = _audioBridge?.initialize() ?? false;
+      debugPrint("SriDAW: initialize() returned: $success");
+
+      if (success) {
+        try {
+          const platform = MethodChannel('com.ram.sridaw/assets');
+          final String? sfPath = await platform.invokeMethod('extractSoundFont');
+          if (sfPath != null) {
+            bool sfLoaded = _audioBridge?.loadSoundFont(sfPath) ?? false;
+            debugPrint("SriDAW: SoundFont loaded: $sfLoaded ($sfPath)");
+            debugPrint("SriDAW: isSoundFontLoaded=${_audioBridge?.isSoundFontLoaded()}");
+          }
+        } catch (e) {
+          debugPrint("SriDAW: Failed to extract/load SoundFont: $e");
+        }
+
+        _audioBridge?.setVolume(_masterVolume);
+        for (int i = 0; i < _tracks.length; i++) {
+          final t = _tracks[i];
+          _audioBridge?.setTrackVolume(i, t.vol);
+          _audioBridge?.setTrackInstrument(i, t.instrument);
+          _audioBridge?.setTrackMute(i, t.mute);
+        }
+        setState(() => _isEngineReady = true);
+        debugPrint("SriDAW: Engine ready");
+      }
+    } catch (e) {
+      debugPrint("SriDAW: Engine init failed: $e");
+    }
+  }
+
+  void _onMeterTick(Timer timer) {
+    if (_audioBridge == null || !_isEngineReady) return;
+    if (_isPlaying) {
+      final double t = _audioBridge!.getPlayheadTime();
+      final int totalSteps = kArrangementBars * kStepsPerBar;
+      final int step = ((t / _stepDuration) % totalSteps).floor();
+      setState(() {
+        _playheadStep = step;
+        for (int i = 0; i < _tracks.length; i++) {
+          _tracks[i].peak = _tracks[i].mute ? 0.0 : _audioBridge!.getTrackPeakLevel(i);
+        }
+      });
+    } else if (_playheadStep != -1) {
+      setState(() => _playheadStep = -1);
+    }
+  }
+
   void _togglePlayback() {
+    if (!_isEngineReady) return;
+    setState(() => _isPlaying = !_isPlaying);
+    if (_isPlaying) {
+      _syncArrangementToEngine();
+      _audioBridge?.playDemo(true);
+    } else {
+      _audioBridge?.playDemo(false);
+      _audioBridge?.setLoopDuration(2.0);
+    }
+  }
+
+  /// Push the full arrangement (all tracks, all placed clips) into the engine.
+  void _syncArrangementToEngine() {
+    if (_audioBridge == null) return;
+    _audioBridge!.clearMidiSequence();
+    final double sd = _stepDuration;
+    for (int t = 0; t < _tracks.length; t++) {
+      final tr = _tracks[t];
+      for (final bar in tr.clips) {
+        for (final n in tr.notes) {
+          final double start = (bar * kStepsPerBar + n.startStep) * sd;
+          final double dur = n.lengthSteps * sd;
+          _audioBridge!.addMidiNote(t, n.note, start, dur, 0.85);
+        }
+      }
+    }
+    _audioBridge!.setLoopDuration(kArrangementBars * kStepsPerBar * sd);
+  }
+
+  /// Play only the selected track's phrase (one bar loop).
+  void _playSelectedPhrase() {
+    if (_audioBridge == null || !_isEngineReady) return;
+    final tr = _tracks[_selectedTrack];
+    _audioBridge!.clearMidiSequence();
+    final double sd = _stepDuration;
+    for (final n in tr.notes) {
+      _audioBridge!.addMidiNote(_selectedTrack, n.note, n.startStep * sd, n.lengthSteps * sd, 0.85);
+    }
+    _audioBridge!.setLoopDuration(kStepsPerBar * sd);
+    _audioBridge?.playDemo(true);
+    setState(() => _isPlaying = true);
+  }
+
+  void _previewNote(int note, double velocity) {
+    if (_audioBridge == null || !_isEngineReady) return;
+    if (velocity > 0) {
+      _audioBridge!.playPreviewNote(_selectedTrack, note, velocity);
+      Future.delayed(const Duration(milliseconds: 220), () {
+        _audioBridge?.playPreviewNote(_selectedTrack, note, 0.0);
+      });
+    }
+  }
+
+  void _toggleNote(int note, int step) {
+    final tr = _tracks[_selectedTrack];
+    final idx = tr.notes.indexWhere(
+        (n) => n.note == note && step >= n.startStep && step < n.startStep + n.lengthSteps);
     setState(() {
-      _isPlaying = !_isPlaying;
-      _audioBridge?.playDemo(_isPlaying);
+      if (idx >= 0) {
+        tr.notes.removeAt(idx);
+      } else {
+        tr.notes.add(NoteEvent(note, step, _noteLength));
+      }
     });
   }
 
   void _onTrackVolumeChanged(int index, double val) {
     setState(() {
-      _channels[index]["vol"] = val;
+      _tracks[index].vol = val;
       _audioBridge?.setTrackVolume(index, val);
     });
   }
 
   void _onTrackMuteToggled(int index) {
     setState(() {
-      bool newMute = !_channels[index]["mute"];
-      _channels[index]["mute"] = newMute;
-      _audioBridge?.setTrackMute(index, newMute);
+      _tracks[index].mute = !_tracks[index].mute;
+      _audioBridge?.setTrackMute(index, _tracks[index].mute);
+    });
+  }
+
+  void _onTrackSoloToggled(int index) {
+    setState(() {
+      _tracks[index].solo = !_tracks[index].solo;
+      _audioBridge?.setTrackSolo(index, _tracks[index].solo);
+    });
+  }
+
+  void _onTrackInstrumentChanged(int index, int program) {
+    setState(() {
+      _tracks[index].instrument = program;
+      _audioBridge?.setTrackInstrument(index, program);
+    });
+  }
+
+  void _toggleClip(int trackIndex, int bar) {
+    setState(() {
+      final clips = _tracks[trackIndex].clips;
+      if (clips.contains(bar)) {
+        clips.remove(bar);
+      } else {
+        clips.add(bar);
+      }
     });
   }
 
   Future<void> _pickMidiFile() async {
-    List<PlatformFile>? files = await FilePicker.pickFiles(
+    final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['mid', 'midi'],
     );
-
-    if (files.isNotEmpty) {
-      final String? path = files.single.path;
-      if (path != null) {
-        bool success = _audioBridge?.loadMidiFile(path) ?? false;
-        if (success) {
-          setState(() {
-            _loadedMidiName = files.single.name;
-          });
-          
-          if (!mounted) return;
+    if (files != null && files.isNotEmpty) {
+      final f = files.first;
+      if (f.path != null) {
+        final ok = _audioBridge?.loadMidiFile(f.path!) ?? false;
+        if (ok && mounted) {
+          setState(() => _loadedMidiName = f.name);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Loaded MIDI: $_loadedMidiName', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green),
-          );
-        } else {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to load MIDI file.', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
+            SnackBar(content: Text('Loaded MIDI: ${f.name}')),
           );
         }
       }
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('SRI DAW', style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold, fontSize: 16)),
-            Text('Seq: $_loadedMidiName', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          ],
-        ),
-        bottom: const TabBar(
-          indicatorColor: Color(0xFF00E676),
-          tabs: [
-            Tab(icon: Icon(Icons.horizontal_split), text: "ARRANGEMENT"),
-            Tab(icon: Icon(Icons.tune), text: "MIXER"),
-          ],
-        ),
+        title: const Text('SRI DAW',
+            style: TextStyle(letterSpacing: 3, fontWeight: FontWeight.w300, fontSize: 16)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.queue_music, color: Color(0xFF00E676)), 
-            tooltip: "Load MIDI File",
+            icon: const Icon(Icons.folder_open_outlined, size: 20),
+            tooltip: 'Load MIDI',
             onPressed: _pickMidiFile,
           ),
-          IconButton(icon: const Icon(Icons.settings), onPressed: () {}),
         ],
+        bottom: const TabBar(
+          indicatorColor: Color(0xFF4ADE80),
+          labelStyle: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 1),
+          tabs: [
+            Tab(text: 'PHRASES'),
+            Tab(text: 'TRACKS'),
+          ],
+        ),
       ),
       body: Column(
         children: [
-          // Main View Area (Tabs)
           Expanded(
             child: TabBarView(
-              physics: const NeverScrollableScrollPhysics(),
               children: [
-                _buildArrangementView(),
-                _buildMixerView(),
+                _buildPhrasesView(),
+                _buildTracksView(),
               ],
             ),
           ),
-          // Master Section & Transport (Always visible at bottom)
-          _buildMasterSection(),
+          _buildTransport(),
         ],
       ),
     );
   }
 
-  final List<List<List<bool>>> _pianoRoll = List.generate(6, (_) => List.generate(24, (_) => List.generate(16, (_) => false)));
-  int _selectedTrackIndex = 0;
-  int _bpm = 120;
-
-  void _syncSequencerToEngine() {
-    if (_audioBridge == null) return;
-    
-    _audioBridge!.clearMidiSequence();
-    
-    double beatDuration = 60.0 / _bpm;
-    double stepDuration = beatDuration / 4.0;
-    
-    _audioBridge!.setLoopDuration(beatDuration * 4.0);
-    
-    for (int t = 0; t < _channels.length; t++) {
-      for (int n = 0; n < 24; n++) {
-        for (int s = 0; s < 16; s++) {
-          if (_pianoRoll[t][n][s]) {
-            int noteNumber = 48 + n; 
-            _audioBridge!.addMidiNote(noteNumber, s * stepDuration, stepDuration, 0.8);
-          }
-        }
-      }
-    }
+  // ---------------------------------------------------------------------------
+  // PHRASES TAB — vertical piano roll editor for the selected track
+  // ---------------------------------------------------------------------------
+  Widget _buildPhrasesView() {
+    final tr = _tracks[_selectedTrack];
+    return Column(
+      children: [
+        _buildPhraseToolbar(tr),
+        Expanded(
+          child: PianoRollWidget(
+            notes: tr.notes,
+            color: tr.color,
+            playheadStep: _playheadStep,
+            onToggleNote: _toggleNote,
+            onPreviewNote: _previewNote,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            'Tap a key cell to paint a note · tap again to erase · drag on a key to preview',
+            style: const TextStyle(color: Color(0xFF8A8A93), fontSize: 11),
+          ),
+        ),
+      ],
+    );
   }
 
-  Widget _buildArrangementView() {
+  Widget _buildPhraseToolbar(Track tr) {
     return Container(
-      color: const Color(0xFF141414),
-      child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.white10)),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                DropdownButton<int>(
-                  value: _selectedTrackIndex,
-                  dropdownColor: const Color(0xFF1A1A1A),
-                  underline: const SizedBox(),
-                  items: List.generate(_channels.length, (i) {
-                    return DropdownMenuItem<int>(
-                      value: i,
-                      child: Text("PIANO ROLL: ${_channels[i]['name']}", style: TextStyle(fontWeight: FontWeight.bold, color: _channels[i]['color'])),
-                    );
-                  }),
-                  onChanged: (val) {
-                    if (val != null) setState(() => _selectedTrackIndex = val);
-                  }
-                ),
-                
-                // BPM Control
-                Row(
-                  children: [
-                    const Icon(Icons.speed, color: Colors.white54, size: 16),
-                    const SizedBox(width: 8),
-                    DropdownButton<int>(
-                      value: _bpm,
-                      dropdownColor: const Color(0xFF1A1A1A),
-                      underline: const SizedBox(),
-                      items: [80, 100, 120, 140, 160].map((int val) {
-                        return DropdownMenuItem<int>(
-                          value: val,
-                          child: Text("$val BPM", style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00E676))),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            _bpm = val;
-                          });
-                          _syncSequencerToEngine(); // auto sync on change
-                        }
-                      },
-                    ),
-                  ],
-                ),
+          // Track selector
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: tr.color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: tr.color.withOpacity(0.5)),
+            ),
+            child: DropdownButton<int>(
+              value: _selectedTrack,
+              underline: const SizedBox(),
+              icon: const Icon(Icons.arrow_drop_down, size: 18),
+              items: List.generate(_tracks.length, (i) {
+                return DropdownMenuItem<int>(
+                  value: i,
+                  child: Text(_tracks[i].name,
+                      style: TextStyle(color: _tracks[i].color, fontWeight: FontWeight.w600)),
+                );
+              }),
+              onChanged: (v) => setState(() => _selectedTrack = v ?? 0),
+            ),
+          ),
+          // Instrument selector
+          DropdownButton<int>(
+            value: tr.instrument,
+            underline: const SizedBox(),
+            hint: const Text('Instrument'),
+            items: kInstruments.map((ins) {
+              return DropdownMenuItem<int>(
+                value: ins['program'] as int,
+                child: Text(ins['name'] as String, style: const TextStyle(fontSize: 13)),
+              );
+            }).toList(),
+            onChanged: (v) {
+              if (v != null) _onTrackInstrumentChanged(_selectedTrack, v);
+            },
+          ),
+          // Note length
+          Row(
+            children: [
+              const Text('LEN', style: TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
+              const SizedBox(width: 6),
+              DropdownButton<int>(
+                value: _noteLength,
+                underline: const SizedBox(),
+                items: [1, 2, 4, 8].map((l) {
+                  return DropdownMenuItem<int>(value: l, child: Text('$l', style: const TextStyle(fontSize: 13)));
+                }).toList(),
+                onChanged: (v) => setState(() => _noteLength = v ?? 2),
+              ),
+            ],
+          ),
+          // Play phrase
+          OutlinedButton.icon(
+            icon: const Icon(Icons.play_arrow, size: 16),
+            label: const Text('PLAY PHRASE'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF4ADE80),
+              side: const BorderSide(color: Color(0xFF4ADE80)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            ),
+            onPressed: _playSelectedPhrase,
+          ),
+          // Clear
+          TextButton(
+            child: const Text('CLEAR', style: TextStyle(color: Color(0xFF8A8A93))),
+            onPressed: () => setState(() => tr.notes.clear()),
+          ),
+        ],
+      ),
+    );
+  }
 
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.sync),
-                  label: const Text("SYNC"),
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E676), foregroundColor: Colors.black),
-                  onPressed: () {
-                    _syncSequencerToEngine();
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sequencer Synced!')));
-                  },
-                )
+  // ---------------------------------------------------------------------------
+  // TRACKS TAB — mixer strips + arrangement lanes (1st track shows phrases)
+  // ---------------------------------------------------------------------------
+  Widget _buildTracksView() {
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: _tracks.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, i) => _buildTrackCard(i),
+    );
+  }
+
+  Widget _buildTrackCard(int index) {
+    final tr = _tracks[index];
+    final bool isFirst = index == 0;
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF15151A),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: tr.color.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                Container(width: 4, height: 28, decoration: BoxDecoration(
+                  color: tr.color, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(tr.name, style: TextStyle(color: tr.color, fontWeight: FontWeight.w700)),
+                      Text(_instrumentName(tr.instrument),
+                          style: const TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
+                    ],
+                  ),
+                ),
+                _smallToggle('M', tr.mute, const Color(0xFFF87171), () => _onTrackMuteToggled(index)),
+                const SizedBox(width: 6),
+                _smallToggle('S', tr.solo, const Color(0xFFFBBF24), () => _onTrackSoloToggled(index)),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 90,
+                  child: Slider(
+                    value: tr.vol,
+                    onChanged: (v) => _onTrackVolumeChanged(index, v),
+                  ),
+                ),
+                // Meter
+                _miniMeter(tr.peak),
               ],
             ),
           ),
-          Expanded(
+          // Arrangement lane (clips)
+          Container(
+            height: 46,
+            margin: const EdgeInsets.only(left: 14, right: 14, bottom: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0C0C0E),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.white10),
+            ),
             child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: 24,
-              itemBuilder: (context, noteIndex) {
-                int displayNoteIndex = 23 - noteIndex; 
-                int midiNote = 48 + displayNoteIndex;
-                String noteName = _getNoteName(midiNote);
-                var channel = _channels[_selectedTrackIndex];
-                
-                return Container(
-                  height: 30,
-                  margin: const EdgeInsets.only(bottom: 1),
-                  color: const Color(0xFF222222),
-                  child: Row(
-                    children: [
-                      // Piano Key Header
-                      Container(
-                        width: 60,
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: noteName.contains('#') ? Colors.black : Colors.white,
-                          border: Border(right: BorderSide(color: channel["color"], width: 4)),
-                        ),
-                        alignment: Alignment.centerRight,
-                        child: Text(noteName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: noteName.contains('#') ? Colors.white : Colors.black)),
+              scrollDirection: Axis.horizontal,
+              itemCount: kArrangementBars,
+              itemBuilder: (context, bar) {
+                final hasClip = tr.clips.contains(bar);
+                return GestureDetector(
+                  onTap: () => _toggleClip(index, bar),
+                  child: Container(
+                    width: 56,
+                    decoration: BoxDecoration(
+                      border: Border(
+                        right: BorderSide(color: Colors.white.withOpacity(0.04)),
+                        left: bar % 1 == 0 ? BorderSide.none : BorderSide.none,
                       ),
-                      // Interactive 16-Step Grid
-                      Expanded(
-                        child: Row(
-                          children: List.generate(16, (stepIndex) {
-                            bool isActive = _pianoRoll[_selectedTrackIndex][displayNoteIndex][stepIndex];
-                            bool isPlayingNow = _isPlaying && (stepIndex == _activeStepIndex);
-                            
-                            return Expanded(
-                              child: GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _pianoRoll[_selectedTrackIndex][displayNoteIndex][stepIndex] = !isActive;
-                                  });
-                                  if (!isActive && _audioBridge != null) {
-                                    _audioBridge?.playPreviewNote(_selectedTrackIndex, midiNote, 0.8);
-                                    Future.delayed(const Duration(milliseconds: 200), () {
-                                      _audioBridge?.playPreviewNote(_selectedTrackIndex, midiNote, 0.0);
-                                    });
-                                  }
-                                },
-                                child: Container(
-                                  margin: const EdgeInsets.all(1),
-                                  decoration: BoxDecoration(
-                                    color: isActive 
-                                        ? (isPlayingNow ? Colors.white : channel["color"]) 
-                                        : (isPlayingNow ? channel["color"].withValues(alpha: 0.3) : const Color(0xFF1A1A1A)),
-                                    border: Border.all(
-                                      color: isPlayingNow ? Colors.white : Colors.white.withValues(alpha: 0.05),
-                                      width: isPlayingNow ? 1.5 : 1.0,
-                                    ),
-                                    borderRadius: BorderRadius.circular(2),
-                                    boxShadow: isPlayingNow ? [BoxShadow(color: channel["color"], blurRadius: 4)] : [],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
+                    ),
+                    child: hasClip
+                        ? Container(
+                            margin: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: tr.color.withOpacity(0.85),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Center(
+                              child: Text(tr.name,
+                                  style: const TextStyle(fontSize: 9, color: Colors.black,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                          )
+                        : const SizedBox(),
                   ),
                 );
               },
             ),
           ),
+          if (isFirst)
+            Padding(
+              padding: const EdgeInsets.only(left: 14, right: 14, bottom: 10),
+              child: Text('↑ Track 1 shows its phrases on the lane above — tap a cell to place/remove a phrase.',
+                  style: const TextStyle(color: Color(0xFF8A8A93), fontSize: 10)),
+            ),
         ],
       ),
     );
   }
 
-  String _getNoteName(int midiNote) {
-    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    int octave = (midiNote ~/ 12) - 1;
-    int noteIndex = midiNote % 12;
-    return '${noteNames[noteIndex]}$octave';
+  String _instrumentName(int program) {
+    for (final ins in kInstruments) {
+      if (ins['program'] == program) return ins['name'] as String;
+    }
+    return 'GM $program';
   }
 
-  Widget _buildMixerView() {
-    return Container(
-      color: const Color(0xFF181818),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.all(16),
-        itemCount: _channels.length,
-        itemBuilder: (context, index) {
-          return _buildChannelStrip(index);
-        },
-      ),
-    );
-  }
-
-  Widget _buildChannelStrip(int index) {
-    var channel = _channels[index];
-    
-    return Container(
-      width: 120,
-      margin: const EdgeInsets.only(right: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF222222),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Column(
-        children: [
-          // Track Name & Load Sample Button
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            decoration: BoxDecoration(
-              color: channel["color"].withOpacity(0.2),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Text(
-                    channel["name"],
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontWeight: FontWeight.bold, color: channel["color"], fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                PopupMenuButton<int>(
-                  icon: const Icon(Icons.piano, size: 14),
-                  padding: EdgeInsets.zero,
-                  onSelected: (int instrument) {
-                    setState(() {
-                      channel["instrument"] = instrument;
-                      _audioBridge?.setTrackInstrument(index, instrument);
-                    });
-                  },
-                  itemBuilder: (BuildContext context) => <PopupMenuEntry<int>>[
-                    const PopupMenuItem<int>(value: 0, child: Text('0: Grand Piano')),
-                    const PopupMenuItem<int>(value: 16, child: Text('16: Drawbar Organ')),
-                    const PopupMenuItem<int>(value: 24, child: Text('24: Acoustic Guitar')),
-                    const PopupMenuItem<int>(value: 32, child: Text('32: Acoustic Bass')),
-                    const PopupMenuItem<int>(value: 48, child: Text('48: String Ensemble')),
-                    const PopupMenuItem<int>(value: 56, child: Text('56: Trumpet')),
-                    const PopupMenuItem<int>(value: 80, child: Text('80: Synth Lead')),
-                  ],
-                )
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Pan Knob (Mock)
-          Column(
-            children: [
-              const Text("PAN", style: TextStyle(fontSize: 10, color: Colors.white54)),
-              const SizedBox(height: 4),
-              Container(
-                width: 30, height: 30,
-                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white24)),
-                child: Center(
-                  child: Transform.rotate(
-                    angle: channel["pan"] * 1.5,
-                    child: Container(width: 4, height: 14, color: Colors.white),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Mute / Solo
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildToggleButton(
-                "M", 
-                channel["mute"], 
-                Colors.red, 
-                () => _onTrackMuteToggled(index)
-              ),
-              const SizedBox(width: 8),
-              _buildToggleButton(
-                "S", 
-                channel["solo"], 
-                Colors.yellow, 
-                () => setState(() => channel["solo"] = !channel["solo"]) // Solo mock for now
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Fader and LED Meter Row
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Volume Fader
-                RotatedBox(
-                  quarterTurns: 3,
-                  child: Slider(
-                    value: channel["vol"],
-                    onChanged: (val) => _onTrackVolumeChanged(index, val),
-                  ),
-                ),
-                // LED Peak Meter
-                _buildLedMeter(channel["peak"]),
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // DB Value
-          Text(
-            "${(channel["vol"] * 100).toInt()}",
-            style: const TextStyle(fontFamily: 'monospace', color: Colors.white54),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLedMeter(double peak) {
-    // Clamp peak between 0 and 1
-    double displayPeak = peak.clamp(0.0, 1.0);
-    
-    return Container(
-      width: 12,
-      margin: const EdgeInsets.symmetric(vertical: 24),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.white24),
-      ),
-      alignment: Alignment.bottomCenter,
-      child: FractionallySizedBox(
-        heightFactor: displayPeak,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(2),
-            gradient: const LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                Colors.green,
-                Colors.yellow,
-                Colors.red,
-              ],
-              stops: [0.6, 0.85, 1.0],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildToggleButton(String label, bool isActive, Color activeColor, VoidCallback onTap) {
+  Widget _smallToggle(String label, bool active, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 32, height: 32,
+        width: 26,
+        height: 26,
         decoration: BoxDecoration(
-          color: isActive ? activeColor : const Color(0xFF333333),
+          color: active ? color : Colors.white.withOpacity(0.06),
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: isActive ? activeColor : Colors.white24),
+          border: Border.all(color: active ? color : Colors.white24),
         ),
         alignment: Alignment.center,
-        child: Text(
-          label, 
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: isActive ? Colors.black : Colors.white54,
+        child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold,
+            color: active ? Colors.black : const Color(0xFF8A8A93))),
+      ),
+    );
+  }
+
+  Widget _miniMeter(double peak) {
+    final p = peak.clamp(0.0, 1.0);
+    return SizedBox(
+      width: 8,
+      height: 30,
+      child: Container(
+        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(3)),
+        alignment: Alignment.bottomCenter,
+        child: FractionallySizedBox(
+          heightFactor: p,
+          child: Container(
+            decoration: BoxDecoration(
+              color: p > 0.85 ? Colors.red : const Color(0xFF4ADE80),
+              borderRadius: BorderRadius.circular(3),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildMasterSection() {
+  // ---------------------------------------------------------------------------
+  // Transport (bottom bar)
+  // ---------------------------------------------------------------------------
+  Widget _buildTransport() {
     return Container(
-      height: 140,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
-        color: Color(0xFF141414),
-        border: Border(top: BorderSide(color: Colors.white12, width: 2)),
+        color: Color(0xFF0C0C0E),
+        border: Border(top: BorderSide(color: Colors.white12)),
       ),
       child: Row(
         children: [
-          // Transport Controls
-          Expanded(
-            flex: 2,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    IconButton(icon: const Icon(Icons.skip_previous, size: 36), onPressed: () {}),
-                    FloatingActionButton(
-                      backgroundColor: _isPlaying ? Colors.red : const Color(0xFF00E676),
-                      onPressed: _togglePlayback,
-                      child: Icon(_isPlaying ? Icons.stop : Icons.play_arrow, color: Colors.black, size: 36),
-                    ),
-                    IconButton(icon: const Icon(Icons.fiber_manual_record, color: Colors.red, size: 36), onPressed: () {}),
-                  ],
-                ),
-              ],
+          FloatingActionButton.small(
+            backgroundColor: _isPlaying ? const Color(0xFFF87171) : const Color(0xFF4ADE80),
+            foregroundColor: Colors.black,
+            onPressed: _togglePlayback,
+            child: Icon(_isPlaying ? Icons.stop : Icons.play_arrow),
+          ),
+          const SizedBox(width: 16),
+          const Text('BPM', style: TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
+          const SizedBox(width: 6),
+          DropdownButton<int>(
+            value: _bpm,
+            underline: const SizedBox(),
+            items: [80, 100, 120, 140, 160].map((b) {
+              return DropdownMenuItem<int>(value: b, child: Text('$b', style: const TextStyle(fontSize: 13)));
+            }).toList(),
+            onChanged: (v) => setState(() => _bpm = v ?? 120),
+          ),
+          const Spacer(),
+          const Icon(Icons.volume_up, size: 18, color: Color(0xFF8A8A93)),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 120,
+            child: Slider(
+              value: _masterVolume,
+              onChanged: (v) {
+                setState(() {
+                  _masterVolume = v;
+                  _audioBridge?.setVolume(v);
+                });
+              },
             ),
           ),
-          
-          Container(width: 2, color: Colors.white12, margin: const EdgeInsets.symmetric(horizontal: 16)),
-          
-          // Master Fader
-          Expanded(
-            flex: 1,
-            child: Row(
-              children: [
-                const Text("MASTER", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: RotatedBox(
-                    quarterTurns: 3,
-                    child: Slider(
-                      value: _masterVolume,
-                      activeColor: const Color(0xFF00E676),
-                      onChanged: (val) {
-                        setState(() {
-                          _masterVolume = val;
-                          _audioBridge?.setVolume(val);
-                        });
-                      },
-                    ),
-                  ),
-                ),
-              ],
+          if (_loadedMidiName.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text(_loadedMidiName, style: const TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
             ),
-          ),
         ],
       ),
     );
   }
+}
+
+// =============================================================================
+// Vertical Piano Roll
+// =============================================================================
+class PianoRollWidget extends StatelessWidget {
+  final List<NoteEvent> notes;
+  final Color color;
+  final int playheadStep;
+  final void Function(int note, int step) onToggleNote;
+  final void Function(int note, double velocity) onPreviewNote;
+
+  const PianoRollWidget({
+    super.key,
+    required this.notes,
+    required this.color,
+    this.playheadStep = -1,
+    required this.onToggleNote,
+    required this.onPreviewNote,
+  });
+
+  static const double _rowHeight = 16.0;
+  static const double _stepWidth = 26.0;
+  static const double _keyWidth = 50.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final int noteCount = kHighNote - kLowNote + 1;
+    final double gridH = noteCount * _rowHeight;
+    final double gridW = kArrangementBars * kStepsPerBar * _stepWidth;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Piano keyboard (vertical, aligned with grid rows)
+        SizedBox(
+          width: _keyWidth,
+          height: gridH,
+          child: Column(
+            children: List.generate(noteCount, (i) {
+              final note = kHighNote - i;
+              final black = const {1, 3, 6, 8, 10}.contains(note % 12);
+              return GestureDetector(
+                onTapDown: (_) => onPreviewNote(note, 0.85),
+                child: Container(
+                  height: _rowHeight,
+                  decoration: BoxDecoration(
+                    color: black ? const Color(0xFF1A1A1E) : const Color(0xFF2A2A30),
+                    border: Border(
+                      bottom: BorderSide(color: Colors.white.withOpacity(0.04)),
+                      right: const BorderSide(color: Colors.white10),
+                    ),
+                  ),
+                  padding: const EdgeInsets.only(right: 6),
+                  alignment: Alignment.centerRight,
+                  child: black
+                      ? null
+                      : Text(_noteLabel(note),
+                          style: const TextStyle(fontSize: 9, color: Color(0xFF8A8A93))),
+                ),
+              );
+            }),
+          ),
+        ),
+        // Scrollable grid
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: gridW,
+                height: gridH,
+                child: Stack(
+                  children: [
+                    CustomPaint(
+                      size: Size(gridW, gridH),
+                      painter: _GridPainter(color: color, stepWidth: _stepWidth, rowHeight: _rowHeight,
+                          steps: kArrangementBars * kStepsPerBar, lowNote: kLowNote, highNote: kHighNote),
+                    ),
+                    CustomPaint(
+                      size: Size(gridW, gridH),
+                      painter: _NotesPainter(notes: notes, color: color, stepWidth: _stepWidth,
+                          rowHeight: _rowHeight, lowNote: kLowNote),
+                    ),
+                    if (playheadStep >= 0)
+                      Positioned(
+                        left: playheadStep * _stepWidth.toDouble(),
+                        top: 0,
+                        bottom: 0,
+                        child: Container(width: 2, color: Colors.white.withOpacity(0.7)),
+                      ),
+                    // Tap layer
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTapDown: (d) {
+                          final int step = (d.localPosition.dx / _stepWidth).floor()
+                              .clamp(0, kArrangementBars * kStepsPerBar - 1);
+                          final int row = (d.localPosition.dy / _rowHeight).floor()
+                              .clamp(0, kHighNote - kLowNote);
+                          final int note = kHighNote - row;
+                          onToggleNote(note, step);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _noteLabel(int note) {
+    const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    return '${names[note % 12]}${(note ~/ 12) - 1}';
+  }
+}
+
+class _GridPainter extends CustomPainter {
+  final Color color;
+  final double stepWidth;
+  final double rowHeight;
+  final int steps;
+  final int lowNote;
+  final int highNote;
+
+  _GridPainter({required this.color, required this.stepWidth, required this.rowHeight,
+      required this.steps, required this.lowNote, required this.highNote});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.white.withOpacity(0.04);
+    // horizontal note rows
+    for (int n = lowNote; n <= highNote; n++) {
+      final y = (highNote - n) * rowHeight;
+      final isBlack = const {1, 3, 6, 8, 10}.contains(n % 12);
+      if (isBlack) {
+        canvas.drawRect(Rect.fromLTWH(0, y, size.width, rowHeight),
+            Paint()..color = Colors.black.withOpacity(0.18));
+      }
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+    // vertical step lines (bar lines brighter)
+    for (int s = 0; s <= steps; s++) {
+      final x = s * stepWidth;
+      final isBar = s % kStepsPerBar == 0;
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        Paint()..color = isBar ? color.withOpacity(0.22) : Colors.white.withOpacity(0.03),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GridPainter old) => false;
+}
+
+class _NotesPainter extends CustomPainter {
+  final List<NoteEvent> notes;
+  final Color color;
+  final double stepWidth;
+  final double rowHeight;
+  final int lowNote;
+
+  _NotesPainter({required this.notes, required this.color, required this.stepWidth,
+      required this.rowHeight, required this.lowNote});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final n in notes) {
+      final double x = n.startStep * stepWidth;
+      final double w = n.lengthSteps * stepWidth - 1;
+      final double y = (kHighNote - n.note) * rowHeight + 1;
+      final r = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, y, w, rowHeight - 2),
+        const Radius.circular(3),
+      );
+      canvas.drawRRect(r, Paint()..color = color.withOpacity(0.9));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _NotesPainter old) => old.notes != notes;
 }
