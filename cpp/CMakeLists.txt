@@ -72,7 +72,13 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/FluidSynth/fluidsynth.git
     GIT_TAG        v2.5.7
 )
-FetchContent_MakeAvailable(fluidsynth)
+# Populate only (do NOT call FetchContent_MakeAvailable, which would add the
+# whole FluidSynth project to the default build). We add it EXCLUDE_FROM_ALL so
+# its CLI executable, example programs and test suite are NOT built by default
+# (several fail to compile under the NDK and are not needed). Only libfluidsynth
+# is pulled in, as a dependency of our sridaw_juce target.
+FetchContent_Populate(fluidsynth)
+add_subdirectory(${fluidsynth_SOURCE_DIR} ${fluidsynth_BINARY_DIR} EXCLUDE_FROM_ALL)
 
 # Add our bridge library
 add_library(sridaw_juce SHARED

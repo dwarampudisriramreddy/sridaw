@@ -40,10 +40,6 @@ android {
     externalNativeBuild {
         cmake {
             path = file("../../cpp/CMakeLists.txt")
-            // Only build our bridge library. FluidSynth's CMake also defines a CLI
-            // executable, example programs and a test suite; building those pulls in
-            // targets that fail to compile under the NDK and are not needed here.
-            targets = listOf("sridaw_juce")
         }
     }
 
