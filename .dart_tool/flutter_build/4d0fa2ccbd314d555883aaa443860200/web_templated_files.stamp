@@ -1,0 +1,1 @@
+{"inputs":["/home/sri/sridaw/web/*/index.html","/home/sri/sridaw/web/flutter_bootstrap.js","/home/sri/flutter/bin/cache/engine.stamp"],"outputs":["/home/sri/sridaw/build/web/*/index.html","/home/sri/sridaw/build/web/flutter_bootstrap.js"],"buildKey":"[{\"compileTarget\":\"dart2js\",\"renderer\":\"canvaskit\",\"mainJsPath\":\"main.dart.js\"}]"}
