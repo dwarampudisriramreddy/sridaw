@@ -13,9 +13,22 @@ AudioEngine::~AudioEngine() {
 }
 
 bool AudioEngine::initialize() {
-    juce::String error = deviceManager->initialiseWithDefaultDevices(0, 2);
+    // On Android the audio system is sometimes not ready immediately at app
+    // cold-start, so the first open attempt can fail (or open a device whose
+    // callback thread never starts). Retry a few times — this is exactly what
+    // happens when the user later taps "Re-init", which makes audio work.
+    juce::String error;
+    const int maxAttempts = 4;
+    for (int attempt = 0; attempt < maxAttempts; ++attempt) {
+        error = deviceManager->initialiseWithDefaultDevices(0, 2);
+        if (error.isEmpty()) break;
+        std::cerr << "[SriDAW] AudioEngine initialise attempt " << attempt
+                  << " failed: " << error.toStdString() << std::endl;
+        deviceManager->closeAudioDevice();
+        if (attempt + 1 < maxAttempts) juce::Thread::sleep(250);
+    }
     if (error.isNotEmpty()) {
-        std::cerr << "JUCE AudioEngine failed to initialize: " << error.toStdString() << std::endl;
+        std::cerr << "[SriDAW] AudioEngine failed to initialize: " << error.toStdString() << std::endl;
         return false;
     }
     

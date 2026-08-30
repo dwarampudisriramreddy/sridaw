@@ -102,10 +102,7 @@ class DawApp extends StatelessWidget {
         ),
         dividerTheme: const DividerThemeData(color: Colors.white10),
       ),
-      home: const DefaultTabController(
-        length: 2,
-        child: DawWorkspace(),
-      ),
+      home: const DawWorkspace(),
     );
   }
 }
@@ -128,6 +125,9 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   int _selectedTrack = 0;
   int _playheadStep = -1;
   bool _isEngineReady = false;
+  bool _autoReinitDone = false;
+  String _editorMode = 'pads'; // 'pads' | 'keys'
+  int _padWriteStep = 0;
 
   // On-screen debug console state
   bool _showDebug = false;
@@ -182,18 +182,29 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   // ---------------------------------------------------------------------------
   // Audio engine
   // ---------------------------------------------------------------------------
-  Future<void> _initAudioEngine() async {
+  Future<void> _initAudioEngine({bool isAutoRetry = false}) async {
     final sw = Stopwatch()..start();
-    _log("init: start");
+    _log("init: start${isAutoRetry ? ' (auto-retry)' : ''}");
     try {
-      _engineStatus = 'requesting permissions';
-      await Permission.microphone.request();
-      await Permission.storage.request();
+      if (!isAutoRetry) {
+        _engineStatus = 'requesting permissions';
+        await Permission.microphone.request();
+        await Permission.storage.request();
+      }
 
-      _engineStatus = 'creating bridge + initialize()';
-      _audioBridge = AudioEngineBridge();
-      bool success = _audioBridge?.initialize() ?? false;
-      _log("init: initialize() returned: $success (${sw.elapsedMilliseconds} ms)");
+      // Retry opening the engine: on cold start the audio device is sometimes
+      // not ready and the first initialize() returns false. Re-init (later)
+      // works, so we retry a few times here.
+      bool success = false;
+      for (int attempt = 0; attempt < 3 && !success; attempt++) {
+        _engineStatus = 'creating bridge + initialize() (try ${attempt + 1})';
+        _audioBridge = AudioEngineBridge();
+        success = _audioBridge?.initialize() ?? false;
+        _log("init: initialize() returned: $success (${sw.elapsedMilliseconds} ms)");
+        if (!success && attempt < 2) {
+          await Future.delayed(const Duration(milliseconds: 400));
+        }
+      }
 
       if (success) {
         _engineStatus = 'loading soundfont';
@@ -229,9 +240,21 @@ class _DawWorkspaceState extends State<DawWorkspace> {
         setState(() => _isEngineReady = true);
         _engineStatus = 'ready';
         _log("init: Engine ready (total ${sw.elapsedMilliseconds} ms)");
+
+        // Safety net: the audio device can open at cold start yet not actually
+        // start its callback thread until the app has been foreground for a
+        // moment. A single automatic re-init (just like the manual one) makes
+        // the first Play reliably produce sound.
+        if (!_autoReinitDone) {
+          _autoReinitDone = true;
+          Future.delayed(const Duration(milliseconds: 1200), () {
+            _log("init: auto re-init (safety net)");
+            _initAudioEngine(isAutoRetry: true);
+          });
+        }
       } else {
         _engineStatus = 'initialize() failed';
-        _log("ERROR: initialize() returned false — audio device could not be opened");
+        _log("ERROR: initialize() returned false after retries — audio device could not be opened");
       }
     } catch (e) {
       _engineStatus = 'exception: $e';
@@ -445,33 +468,41 @@ class _DawWorkspaceState extends State<DawWorkspace> {
             onPressed: _pickMidiFile,
           ),
         ],
-        bottom: const TabBar(
-          indicatorColor: Color(0xFF4ADE80),
-          labelStyle: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 1),
-          tabs: [
-            Tab(text: 'PHRASES'),
-            Tab(text: 'TRACKS'),
-          ],
-        ),
       ),
       body: Stack(
         children: [
           Column(
             children: [
+              _buildTransport(),
               Expanded(
-                child: TabBarView(
-                  children: [
-                    _buildPhrasesView(),
-                    _buildTracksView(),
-                  ],
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _sectionTitle('TRACKS'),
+                      const SizedBox(height: 8),
+                      ...List.generate(_tracks.length, (i) => _buildTrackCard(i)),
+                      const SizedBox(height: 20),
+                      _buildEditorPanel(),
+                    ],
+                  ),
                 ),
               ),
-              _buildTransport(),
             ],
           ),
           if (_showDebug) _buildDebugPanel(),
         ],
       ),
+    );
+  }
+
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 2),
+      child: Text(text,
+          style: const TextStyle(
+              color: Color(0xFF8A8A93), fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.w600)),
     );
   }
 
@@ -553,173 +584,248 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   }
 
   // ---------------------------------------------------------------------------
-  // PHRASES TAB — vertical piano roll editor for the selected track
+  // EDITOR PANEL — chord pads (Hooktheory style) + piano-roll (LMMS/BandLab)
   // ---------------------------------------------------------------------------
-  Widget _buildPhrasesView() {
-    final tr = _tracks[_selectedTrack];
-    return Column(
-      children: [
-        _buildPhraseToolbar(tr),
-        Expanded(
-          child: PianoRollWidget(
-            notes: tr.notes,
-            color: tr.color,
-            playheadStep: _playheadStep,
-            onToggleNote: _toggleNote,
-            onPreviewNote: _previewNote,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            'Tap a key cell to paint a note · tap again to erase · drag on a key to preview',
-            style: const TextStyle(color: Color(0xFF8A8A93), fontSize: 11),
-          ),
-        ),
-      ],
-    );
-  }
+  // Diatonic chord pads for C major.
+  static const List<Map<String, dynamic>> _chordPads = [
+    {'label': 'I', 'notes': [60, 64, 67]},
+    {'label': 'ii', 'notes': [62, 65, 69]},
+    {'label': 'iii', 'notes': [64, 67, 71]},
+    {'label': 'IV', 'notes': [65, 69, 72]},
+    {'label': 'V', 'notes': [67, 71, 74]},
+    {'label': 'vi', 'notes': [69, 72, 76]},
+    {'label': 'vii°', 'notes': [71, 74, 77]},
+  ];
 
-  Widget _buildPhraseToolbar(Track tr) {
+  Widget _buildEditorPanel() {
+    final tr = _tracks[_selectedTrack];
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.white10)),
+      decoration: BoxDecoration(
+        color: const Color(0xFF15151A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tr.color.withOpacity(0.3)),
       ),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Track selector
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: tr.color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: tr.color.withOpacity(0.5)),
-            ),
-            child: DropdownButton<int>(
-              value: _selectedTrack,
-              underline: const SizedBox(),
-              icon: const Icon(Icons.arrow_drop_down, size: 18),
-              items: List.generate(_tracks.length, (i) {
-                return DropdownMenuItem<int>(
-                  value: i,
-                  child: Text(_tracks[i].name,
-                      style: TextStyle(color: _tracks[i].color, fontWeight: FontWeight.w600)),
-                );
-              }),
-              onChanged: (v) => setState(() => _selectedTrack = v ?? 0),
-            ),
-          ),
-          // Instrument selector
-          DropdownButton<int>(
-            value: tr.instrument,
-            underline: const SizedBox(),
-            hint: const Text('Instrument'),
-            items: kInstruments.map((ins) {
-              return DropdownMenuItem<int>(
-                value: ins['program'] as int,
-                child: Text(ins['name'] as String, style: const TextStyle(fontSize: 13)),
-              );
-            }).toList(),
-            onChanged: (v) {
-              if (v != null) _onTrackInstrumentChanged(_selectedTrack, v);
-            },
-          ),
-          // Note length
           Row(
             children: [
-              const Text('LEN', style: TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
+              Container(width: 4, height: 22, decoration: BoxDecoration(
+                color: tr.color, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(tr.name,
+                    style: TextStyle(color: tr.color, fontWeight: FontWeight.w700, fontSize: 15)),
+              ),
+              _modeToggle('PADS', _editorMode == 'pads', () => setState(() => _editorMode = 'pads')),
               const SizedBox(width: 6),
+              _modeToggle('KEYS', _editorMode == 'keys', () => setState(() => _editorMode = 'keys')),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
               DropdownButton<int>(
-                value: _noteLength,
+                value: tr.instrument,
                 underline: const SizedBox(),
-                items: [1, 2, 4, 8].map((l) {
-                  return DropdownMenuItem<int>(value: l, child: Text('$l', style: const TextStyle(fontSize: 13)));
+                hint: const Text('Instrument'),
+                items: kInstruments.map((ins) {
+                  return DropdownMenuItem<int>(
+                    value: ins['program'] as int,
+                    child: Text(ins['name'] as String, style: const TextStyle(fontSize: 13)),
+                  );
                 }).toList(),
-                onChanged: (v) => setState(() => _noteLength = v ?? 2),
+                onChanged: (v) {
+                  if (v != null) _onTrackInstrumentChanged(_selectedTrack, v);
+                },
+              ),
+              if (_editorMode == 'keys') ...[
+                const Text('LEN', style: TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
+                DropdownButton<int>(
+                  value: _noteLength,
+                  underline: const SizedBox(),
+                  items: [1, 2, 4, 8].map((l) {
+                    return DropdownMenuItem<int>(value: l, child: Text('$l', style: const TextStyle(fontSize: 13)));
+                  }).toList(),
+                  onChanged: (v) => setState(() => _noteLength = v ?? 2),
+                ),
+              ],
+              OutlinedButton.icon(
+                icon: const Icon(Icons.play_arrow, size: 16),
+                label: const Text('PLAY'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF4ADE80),
+                  side: const BorderSide(color: Color(0xFF4ADE80)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                onPressed: _playSelectedPhrase,
+              ),
+              TextButton(
+                child: const Text('CLEAR', style: TextStyle(color: Color(0xFF8A8A93))),
+                onPressed: () => setState(() {
+                  tr.notes.clear();
+                  _padWriteStep = 0;
+                }),
               ),
             ],
           ),
-          // Play phrase
-          OutlinedButton.icon(
-            icon: const Icon(Icons.play_arrow, size: 16),
-            label: const Text('PLAY PHRASE'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF4ADE80),
-              side: const BorderSide(color: Color(0xFF4ADE80)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          const SizedBox(height: 12),
+          if (_editorMode == 'pads')
+            _buildPads()
+          else
+            SizedBox(
+              height: 340,
+              child: PianoRollWidget(
+                notes: tr.notes,
+                color: tr.color,
+                playheadStep: _playheadStep,
+                onToggleNote: _toggleNote,
+                onPreviewNote: _previewNote,
+              ),
             ),
-            onPressed: _playSelectedPhrase,
-          ),
-          // Clear
-          TextButton(
-            child: const Text('CLEAR', style: TextStyle(color: Color(0xFF8A8A93))),
-            onPressed: () => setState(() => tr.notes.clear()),
-          ),
+          if (_editorMode == 'keys')
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Tap a cell to paint/erase a note · tap a key name to preview',
+                  style: TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
+            ),
         ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // TRACKS TAB — mixer strips + arrangement lanes (1st track shows phrases)
-  // ---------------------------------------------------------------------------
-  Widget _buildTracksView() {
-    return ListView.separated(
-      padding: const EdgeInsets.all(12),
-      itemCount: _tracks.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (context, i) => _buildTrackCard(i),
+  Widget _modeToggle(String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF4ADE80) : Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(label, style: TextStyle(
+          fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1,
+          color: active ? Colors.black : const Color(0xFF8A8A93))),
+      ),
     );
   }
 
+  Widget _buildPads() {
+    final color = _tracks[_selectedTrack].color;
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _chordPads.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 1.4,
+      ),
+      itemBuilder: (_, i) {
+        final pad = _chordPads[i];
+        final notes = pad['notes'] as List<int>;
+        return GestureDetector(
+          onTap: () => _playChordPad(notes),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [color.withOpacity(0.85), color.withOpacity(0.35)],
+              ),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withOpacity(0.6)),
+            ),
+            alignment: Alignment.center,
+            child: Text(pad['label'] as String,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+          ),
+        );
+      },
+    );
+  }
+
+  void _playChordPad(List<int> notes) {
+    if (!_isEngineReady) {
+      _log('pad: engine not ready');
+      return;
+    }
+    final ch = _selectedTrack;
+    final tr = _tracks[ch];
+    _log('pad: chord on ${tr.name} notes=$notes step=$_padWriteStep');
+    for (final n in notes) {
+      _audioBridge?.playPreviewNote(ch, n, 0.85);
+    }
+    setState(() {
+      for (final n in notes) {
+        tr.notes.add(NoteEvent(n, _padWriteStep, 4));
+      }
+      if (tr.clips.isEmpty) tr.clips.add(0);
+      _padWriteStep = (_padWriteStep + 4) % kStepsPerBar;
+    });
+    Future.delayed(const Duration(milliseconds: 480), () {
+      for (final n in notes) _audioBridge?.playPreviewNote(ch, n, 0.0);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TRACKS — mixer strips + arrangement lanes (tap a track to select it)
+  // ---------------------------------------------------------------------------
   Widget _buildTrackCard(int index) {
     final tr = _tracks[index];
-    final bool isFirst = index == 0;
+    final bool selected = index == _selectedTrack;
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF15151A),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: tr.color.withOpacity(0.25)),
+        border: Border.all(
+          color: selected ? tr.color.withOpacity(0.7) : tr.color.withOpacity(0.25),
+          width: selected ? 1.5 : 1.0,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                Container(width: 4, height: 28, decoration: BoxDecoration(
-                  color: tr.color, borderRadius: BorderRadius.circular(2))),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(tr.name, style: TextStyle(color: tr.color, fontWeight: FontWeight.w700)),
-                      Text(_instrumentName(tr.instrument),
-                          style: const TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
-                    ],
+          // Header row (tap to select this track for the editor)
+          GestureDetector(
+            onTap: () => setState(() => _selectedTrack = index),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(
+                children: [
+                  Container(width: 4, height: 28, decoration: BoxDecoration(
+                    color: tr.color, borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(tr.name, style: TextStyle(color: tr.color, fontWeight: FontWeight.w700)),
+                        Text(_instrumentName(tr.instrument),
+                            style: const TextStyle(color: Color(0xFF8A8A93), fontSize: 11)),
+                      ],
+                    ),
                   ),
-                ),
-                _smallToggle('M', tr.mute, const Color(0xFFF87171), () => _onTrackMuteToggled(index)),
-                const SizedBox(width: 6),
-                _smallToggle('S', tr.solo, const Color(0xFFFBBF24), () => _onTrackSoloToggled(index)),
-                const SizedBox(width: 10),
-                SizedBox(
-                  width: 90,
-                  child: Slider(
-                    value: tr.vol,
-                    onChanged: (v) => _onTrackVolumeChanged(index, v),
+                  _smallToggle('M', tr.mute, const Color(0xFFF87171), () => _onTrackMuteToggled(index)),
+                  const SizedBox(width: 6),
+                  _smallToggle('S', tr.solo, const Color(0xFFFBBF24), () => _onTrackSoloToggled(index)),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 90,
+                    child: Slider(
+                      value: tr.vol,
+                      onChanged: (v) => _onTrackVolumeChanged(index, v),
+                    ),
                   ),
-                ),
-                // Meter
-                _miniMeter(tr.peak),
-              ],
+                  // Meter
+                  _miniMeter(tr.peak),
+                ],
+              ),
             ),
           ),
           // Arrangement lane (clips)
@@ -765,12 +871,6 @@ class _DawWorkspaceState extends State<DawWorkspace> {
               },
             ),
           ),
-          if (isFirst)
-            Padding(
-              padding: const EdgeInsets.only(left: 14, right: 14, bottom: 10),
-              child: Text('↑ Track 1 shows its phrases on the lane above — tap a cell to place/remove a phrase.',
-                  style: const TextStyle(color: Color(0xFF8A8A93), fontSize: 10)),
-            ),
         ],
       ),
     );
@@ -823,15 +923,15 @@ class _DawWorkspaceState extends State<DawWorkspace> {
   }
 
   // ---------------------------------------------------------------------------
-  // Transport (bottom bar)
+  // Transport (top bar)
   // ---------------------------------------------------------------------------
   Widget _buildTransport() {
     return Container(
-      height: 64,
+      height: 60,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
         color: Color(0xFF0C0C0E),
-        border: Border(top: BorderSide(color: Colors.white12)),
+        border: Border(bottom: BorderSide(color: Colors.white12)),
       ),
       child: Row(
         children: [
