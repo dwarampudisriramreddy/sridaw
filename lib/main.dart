@@ -82,7 +82,13 @@ class _DawShellState extends State<DawShell> {
   bool _recordingPiano = false;
   final Set<int> _heldPianoKeys = {};
   int _pianoRecCol = 0;
-  int _pianoRecOctStart = 4; // lowest octave shown
+  int _pianoRecOctStart = 4;
+  final Map<int, DateTime> _pianoKeyDownTime = {};
+  bool _isRollPlaying = false;
+
+  // Code tab
+  final TextEditingController _codeCtrl = TextEditingController();
+  bool _codeSyncing = false;
 
   bool _isPlaying = false;
   bool _loop = true;
@@ -127,6 +133,7 @@ class _DawShellState extends State<DawShell> {
 
   @override
   void dispose() {
+    _codeCtrl.dispose();
     _meterTimer?.cancel();
     _playheadTimer?.cancel();
     _audioBridge?.shutdown();
@@ -225,7 +232,7 @@ class _DawShellState extends State<DawShell> {
     final elapsed =
         DateTime.now().difference(_playStart!).inMilliseconds / 1000.0;
     final barDur = (60.0 / _bpm) * 4.0;
-    setState(() => _playheadBar = (elapsed / barDur) % kTimelineBars);
+    setState(() => _playheadBar = (elapsed / barDur) % _totalBars);
   }
 
   void _togglePlayback() {
@@ -264,8 +271,36 @@ class _DawShellState extends State<DawShell> {
         }
       }
     }
-    _audioBridge!.setLoopDuration(kTimelineBars * 16 * sd);
-    _log('sync: $count notes; loop=${(kTimelineBars * 16 * sd).toStringAsFixed(2)}s');
+    _audioBridge!.setLoopDuration(_totalBars * 16 * sd);
+    _log('sync: $count notes; loop=${(_totalBars * 16 * sd).toStringAsFixed(2)}s');
+  }
+
+  void _toggleRollPlayback() {
+    if (_openPattern == null || _openTrack == null) return;
+    if (kIsWeb || !_isEngineReady) return;
+    if (_isRollPlaying) {
+      _audioBridge?.playDemo(false);
+      _isRollPlaying = false;
+      _log('ROLL STOP');
+      return;
+    }
+    // Sync only the open pattern
+    _audioBridge!.clearMidiSequence();
+    final sd = _stepDur;
+    final t = _openTrackIndex;
+    final p = _openPattern!;
+    int count = 0;
+    for (final n in p.notes) {
+      final midi = octNToMidi(n.oct, n.n);
+      final start = n.startCol * sd;
+      _audioBridge!.addMidiNote(t, midi, start, n.len * sd, 0.85);
+      count++;
+    }
+    final patternDur = p.len * 16 * sd;
+    _audioBridge!.setLoopDuration(patternDur);
+    _audioBridge!.playDemo(true);
+    _isRollPlaying = true;
+    _log('ROLL PLAY: ${p.label} ($count notes, ${patternDur.toStringAsFixed(2)}s)');
   }
 
   void _previewChord(int degree) {
@@ -604,6 +639,7 @@ class _DawShellState extends State<DawShell> {
                     _buildPianoRollTab(),
                     _buildMixerTab(),
                     _buildFxTab(),
+                    _buildCodeTab(),
                   ],
                 ),
               ),
@@ -734,6 +770,7 @@ class _DawShellState extends State<DawShell> {
       (Icons.piano, 'KEYS'),
       (Icons.equalizer, 'MIXER'),
       (Icons.waves, 'FX'),
+      (Icons.code, 'CODE'),
     ];
     return Container(
       decoration: const BoxDecoration(
@@ -749,7 +786,10 @@ class _DawShellState extends State<DawShell> {
               final active = _activeTab == i;
               return Expanded(
                 child: GestureDetector(
-                  onTap: () => setState(() => _activeTab = i),
+                  onTap: () {
+                    setState(() => _activeTab = i);
+                    if (i == 4) _syncCodeFromPattern();
+                  },
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -1263,6 +1303,25 @@ class _DawShellState extends State<DawShell> {
           AppText.mono('— ${p?.label ?? '—'}',
               size: 11, color: AppColors.textFaint),
           const Spacer(),
+          // Play pattern
+          GestureDetector(
+            onTap: _toggleRollPlayback,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                color: _isRollPlaying ? AppColors.teal : Colors.transparent,
+                border: Border.all(
+                    color: _isRollPlaying ? AppColors.teal : AppColors.line),
+              ),
+              child: Icon(
+                _isRollPlaying ? Icons.stop : Icons.play_arrow,
+                size: 14,
+                color: _isRollPlaying ? AppColors.bgDeep : AppColors.textFaint,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           // Record-to-roll toggle
           GestureDetector(
             onTap: () => setState(() {
@@ -1297,96 +1356,144 @@ class _DawShellState extends State<DawShell> {
   // =========================================================================
   // VIRTUAL PIANO
   // =========================================================================
+  /// White key semitone indices within an octave.
+  static const _whiteNoteIdx = [0, 2, 4, 5, 7, 9, 11]; // C D E F G A B
+  /// Black key semitone → which white key index it sits after.
+  static const _blackAfterWhite = {1: 0, 3: 1, 6: 3, 8: 4, 10: 5};
+  static const _blackNoteIdx = [1, 3, 6, 8, 10]; // C# D# F# G# A#
+
   Widget _buildVirtualPiano() {
     const noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-    final octaves = [4, 5];
-    final totalKeys = octaves.length * 12;
-    const keyW = 32.0;
-    const whiteKeyH = 64.0;
-    const blackKeyH = 40.0;
-    final blackIndices = {1, 3, 6, 8, 10};
+    const octaves = [4, 5];
+    const whiteKeyW = 30.0;
+    const whiteKeyH = 100.0;
+    const blackKeyW = 20.0;
+    const blackKeyH = 62.0;
+    const overlap = 0.35; // black key sticks down this fraction past white key bottom
 
     final whiteKeys = <Widget>[];
     final blackKeys = <Widget>[];
-    for (int i = 0; i < totalKeys; i++) {
-      final oct = octaves[i ~/ 12];
-      final n = i % 12;
-      if (!blackIndices.contains(n)) {
+    int whiteIndex = 0;
+    for (final oct in octaves) {
+      for (int wi = 0; wi < 7; wi++) {
+        final n = _whiteNoteIdx[wi];
+        final midi = octNToMidi(oct, n);
+        final held = _heldPianoKeys.contains(midi);
         whiteKeys.add(Positioned(
-          left: i * keyW,
-          width: keyW - 1,
+          left: whiteIndex * whiteKeyW,
+          width: whiteKeyW - 1,
           top: 0,
           height: whiteKeyH,
-          child: _pianoWhiteKey(oct, n, noteNames[n]),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (_) => _pianoKeyDown(oct, n),
+            onTapUp: (_) => _pianoKeyUp(oct, n),
+            onTapCancel: () => _pianoKeyUp(oct, n),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: held
+                    ? const LinearGradient(
+                        colors: [Color(0xFF4FBDBA), Color(0xFF3A9E9B)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      )
+                    : const LinearGradient(
+                        colors: [Color(0xFFF5F5F5), Color(0xFFE8E8E8)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(4),
+                  bottomRight: Radius.circular(4),
+                ),
+                border: Border.all(
+                    color: const Color(0xFF555555), width: 0.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    offset: const Offset(1, 2),
+                    blurRadius: 2,
+                  ),
+                ],
+              ),
+              alignment: Alignment.bottomCenter,
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(noteNames[n],
+                  style: TextStyle(
+                    fontSize: 8,
+                    color: held
+                        ? AppColors.bgDeep
+                        : const Color(0xFF888888),
+                  )),
+            ),
+          ),
         ));
-      } else {
-        blackKeys.add(Positioned(
-          left: i * keyW - keyW * 0.3,
-          width: keyW * 0.65,
-          top: 0,
-          height: blackKeyH,
-          child: _pianoBlackKey(oct, n),
-        ));
+        // Place black key after this white key if applicable
+        final blackNote = _blackAfterWhite.entries
+            .where((e) => e.value == wi)
+            .map((e) => e.key)
+            .toList();
+        for (final bn in blackNote) {
+          final bmidi = octNToMidi(oct, bn);
+          final bheld = _heldPianoKeys.contains(bmidi);
+          final bx = (whiteIndex + 1) * whiteKeyW - blackKeyW * 0.55;
+          blackKeys.add(Positioned(
+            left: bx,
+            width: blackKeyW,
+            top: 0,
+            height: blackKeyH + whiteKeyH * overlap,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (_) => _pianoKeyDown(oct, bn),
+              onTapUp: (_) => _pianoKeyUp(oct, bn),
+              onTapCancel: () => _pianoKeyUp(oct, bn),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: bheld
+                      ? const LinearGradient(
+                          colors: [Color(0xFF4FBDBA), Color(0xFF2A7D7A)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        )
+                      : const LinearGradient(
+                          colors: [Color(0xFF2A2A2A), Color(0xFF1A1A1A)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(3),
+                    bottomRight: Radius.circular(3),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      offset: const Offset(0, 2),
+                      blurRadius: 3,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ));
+        }
+        whiteIndex++;
       }
     }
 
+    final totalWhiteKeys = octaves.length * 7;
+    final totalW = totalWhiteKeys * whiteKeyW;
+
     return Container(
-      height: whiteKeyH + 18,
+      height: whiteKeyH + 20,
       decoration: const BoxDecoration(
-        color: AppColors.panel,
+        color: Color(0xFF1E1B17),
         border: Border(top: BorderSide(color: AppColors.lineSoft)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: SizedBox(
-          width: totalKeys * keyW,
+          width: totalW,
           child: Stack(children: [...whiteKeys, ...blackKeys]),
-        ),
-      ),
-    );
-  }
-
-  Widget _pianoWhiteKey(int oct, int n, String label) {
-    final midi = octNToMidi(oct, n);
-    final held = _heldPianoKeys.contains(midi);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _pianoKeyDown(oct, n),
-      onTapUp: (_) => _pianoKeyUp(oct, n),
-      onTapCancel: () => _pianoKeyUp(oct, n),
-      child: Container(
-        decoration: BoxDecoration(
-          color: held ? AppColors.teal : Colors.white,
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(3),
-            bottomRight: Radius.circular(3),
-          ),
-          border: Border.all(color: AppColors.lineSoft),
-        ),
-        alignment: Alignment.bottomCenter,
-        padding: const EdgeInsets.only(bottom: 4),
-        child: AppText.mono(label,
-            size: 7, color: held ? AppColors.bgDeep : AppColors.textFaint),
-      ),
-    );
-  }
-
-  Widget _pianoBlackKey(int oct, int n) {
-    final midi = octNToMidi(oct, n);
-    final held = _heldPianoKeys.contains(midi);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _pianoKeyDown(oct, n),
-      onTapUp: (_) => _pianoKeyUp(oct, n),
-      onTapCancel: () => _pianoKeyUp(oct, n),
-      child: Container(
-        decoration: BoxDecoration(
-          color: held ? AppColors.teal : AppColors.bgDeep,
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(2),
-            bottomRight: Radius.circular(2),
-          ),
-          border: Border.all(color: AppColors.panel, width: 0.5),
         ),
       ),
     );
@@ -1395,19 +1502,10 @@ class _DawShellState extends State<DawShell> {
   void _pianoKeyDown(int oct, int n) {
     final midi = octNToMidi(oct, n);
     setState(() => _heldPianoKeys.add(midi));
+    _pianoKeyDownTime[midi] = DateTime.now();
     // Play preview
     if (!kIsWeb && _isEngineReady) {
       _audioBridge?.playPreviewNote(_openTrackIndex, midi, 0.85);
-    }
-    // Record note into pattern
-    if (_recordingPiano) {
-      _ensureOpenPattern();
-      final len = _snapDiv; // note length = one snap division
-      final col = _snapToGrid(_pianoRecCol);
-      _openPattern!.notes.add(NoteEvent(
-        oct: oct, n: n, startCol: col, len: len, chordRoot: false));
-      _pianoRecCol = col + len;
-      _log('piano rec: MIDI $midi at col $col');
     }
   }
 
@@ -1417,6 +1515,20 @@ class _DawShellState extends State<DawShell> {
     // Stop preview
     if (!kIsWeb && _isEngineReady) {
       _audioBridge?.playPreviewNote(_openTrackIndex, midi, 0.0);
+    }
+    // Record note with duration-based length
+    if (_recordingPiano && _pianoKeyDownTime.containsKey(midi)) {
+      _ensureOpenPattern();
+      final held = DateTime.now().difference(_pianoKeyDownTime[midi]!);
+      final stepDurMs = (_stepDur * 1000).round();
+      final holdSteps = max(1, (held.inMilliseconds / stepDurMs).round());
+      final len = min(holdSteps, 32);
+      final col = _snapToGrid(_pianoRecCol);
+      _openPattern!.notes.add(NoteEvent(
+          oct: oct, n: n, startCol: col, len: len, chordRoot: false));
+      _pianoRecCol = col + len;
+      _log('rec: MIDI $midi col=$col len=$len');
+      _pianoKeyDownTime.remove(midi);
     }
   }
 
@@ -1901,6 +2013,185 @@ class _DawShellState extends State<DawShell> {
           ),
         ],
       ),
+    );
+  }
+
+  // =========================================================================
+  // CODE TAB — text ↔ MIDI bidirectional editor
+  // =========================================================================
+
+  /// Notation format: `NOTE OCTAVE COL LEN [chord]`
+  /// e.g. `C 4 0 4` or `G# 4 8 2 chord`
+  static const _noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+  String _patternToText(Pattern p) {
+    final sb = StringBuffer();
+    sb.writeln('// Pattern: ${p.label}  (${p.len} bars)');
+    // Sort by startCol then pitch
+    final sorted = List<NoteEvent>.from(p.notes)
+      ..sort((a, b) => a.startCol != b.startCol
+          ? a.startCol.compareTo(b.startCol)
+          : octNToMidi(a.oct, a.n).compareTo(octNToMidi(b.oct, b.n)));
+    for (final n in sorted) {
+      final name = _noteNames[n.n];
+      final chord = n.chordRoot ? ' chord' : '';
+      sb.writeln('${name} ${n.oct} ${n.startCol} ${n.len}$chord');
+    }
+    return sb.toString();
+  }
+
+  List<NoteEvent> _textToNotes(String text) {
+    final notes = <NoteEvent>[];
+    final lines = text.split('\n');
+    for (final raw in lines) {
+      final line = raw.trim();
+      if (line.isEmpty || line.startsWith('//')) continue;
+      final parts = line.split(RegExp(r'\s+'));
+      if (parts.length < 4) continue;
+      // Find note name (may include #)
+      String noteStr = parts[0];
+      int noteIdx = _noteNames.indexOf(noteStr);
+      if (noteIdx < 0) {
+        // try combining parts[0] + parts[1] for sharp names
+        if (parts.length >= 5) {
+          noteStr = '${parts[0]}${parts[1]}';
+          noteIdx = _noteNames.indexOf(noteStr);
+          if (noteIdx >= 0) {
+            final oct = int.tryParse(parts[2]);
+            final col = int.tryParse(parts[3]);
+            final len = int.tryParse(parts[4]);
+            if (oct != null && col != null && len != null && len > 0) {
+              notes.add(NoteEvent(oct: oct, n: noteIdx, startCol: col, len: len));
+            }
+            continue;
+          }
+        }
+        continue;
+      }
+      final octIdx = parts[0].length == noteStr.length ? 1 : 2;
+      final oct = int.tryParse(parts[octIdx]);
+      final col = int.tryParse(parts[octIdx + 1]);
+      final len = int.tryParse(parts[octIdx + 2]);
+      if (oct == null || col == null || len == null || len <= 0) continue;
+      final chord = line.contains('chord');
+      notes.add(NoteEvent(oct: oct, n: noteIdx, startCol: col, len: len, chordRoot: chord));
+    }
+    return notes;
+  }
+
+  void _onCodeChanged(String text) {
+    if (_codeSyncing) return;
+    if (_openPattern == null) return;
+    final notes = _textToNotes(text);
+    setState(() {
+      _openPattern!.notes
+        ..clear()
+        ..addAll(notes);
+    });
+  }
+
+  void _syncCodeFromPattern() {
+    final p = _openPattern;
+    if (p == null) return;
+    _codeSyncing = true;
+    _codeCtrl.text = _patternToText(p);
+    _codeSyncing = false;
+  }
+
+  Widget _buildCodeTab() {
+    final tr = _openTrack;
+    final p = _openPattern;
+    return Column(
+      children: [
+        // Header
+        Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.lineSoft)),
+          ),
+          child: Row(
+            children: [
+              if (tr != null)
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration:
+                      BoxDecoration(shape: BoxShape.circle, color: tr.color),
+                ),
+              const SizedBox(width: 8),
+              AppText.mono(tr?.name ?? '—',
+                  size: 13, weight: FontWeight.w700, color: AppColors.text),
+              const SizedBox(width: 8),
+              AppText.mono('— ${p?.label ?? '—'}',
+                  size: 11, color: AppColors.textFaint),
+              const Spacer(),
+              _chip('SYNC', active: false, onTap: () {
+                _syncCodeFromPattern();
+                _log('code: synced from pattern');
+              }),
+            ],
+          ),
+        ),
+        // Editor
+        Expanded(
+          child: Container(
+            color: const Color(0xFF141210),
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppText.ui('PATTERN CODE',
+                    size: 10,
+                    letterSpacing: 2,
+                    color: AppColors.textDim),
+                const SizedBox(height: 4),
+                AppText.ui(
+                    '// format: NOTE OCTAVE COL LEN [chord]',
+                    size: 9,
+                    color: AppColors.textFaint),
+                AppText.ui(
+                    '// e.g.  C 4 0 4  or  G# 4 8 2 chord',
+                    size: 9,
+                    color: AppColors.textFaint),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1815),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.line),
+                    ),
+                    padding: const EdgeInsets.all(10),
+                    child: TextField(
+                      controller: _codeCtrl,
+                      onChanged: _onCodeChanged,
+                      maxLines: null,
+                      expands: true,
+                      keyboardType: TextInputType.multiline,
+                      style: const TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 13,
+                        color: Color(0xFF4FBDBA),
+                        height: 1.5,
+                      ),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        hintText: 'C 4 0 4\nE 4 4 4\nG 4 8 4',
+                        hintStyle: TextStyle(
+                          color: Color(0xFF444444),
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
