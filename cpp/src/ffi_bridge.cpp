@@ -138,4 +138,11 @@ FFI_EXPORT double getPlayheadTime() {
     return 0.0;
 }
 
+FFI_EXPORT bool loadTrackPlugin(int trackIndex, const char* pluginPath) {
+    if (gAudioEngine && pluginPath) {
+        return gAudioEngine->loadVstPlugin(trackIndex, juce::String(pluginPath));
+    }
+    return false;
+}
+
 } // extern "C"

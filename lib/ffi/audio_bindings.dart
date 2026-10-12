@@ -35,6 +35,11 @@ typedef _SetTrackInstrumentDart = void Function(int index, int program);
 typedef _GetTrackPeakLevelC = ffi.Float Function(ffi.Int32 index);
 typedef _GetTrackPeakLevelDart = double Function(int index);
 
+typedef _LoadTrackPluginC = ffi.Bool Function(
+    ffi.Int32 trackIndex, ffi.Pointer<Utf8> path);
+typedef _LoadTrackPluginDart = bool Function(
+    int trackIndex, ffi.Pointer<Utf8> path);
+
 typedef _PlayDemoC = ffi.Void Function(ffi.Bool play);
 typedef _PlayDemoDart = void Function(bool play);
 
@@ -74,6 +79,7 @@ class AudioEngineBridge {
   _IsSoundFontLoadedDart? _isSoundFontLoaded;
   _GetSoundFontPathDart? _getSoundFontPath;
   late final _GetTrackPeakLevelDart _getTrackPeakLevel;
+  _LoadTrackPluginDart? _loadTrackPlugin;
   late final _PlayDemoDart _playDemo;
   late final _LoadMidiFileDart _loadMidiFile;
   late final _LoadSoundFontDart _loadSoundFont;
@@ -108,6 +114,11 @@ class AudioEngineBridge {
       _setTrackSolo = null;
     }
     try {
+      _loadTrackPlugin = _lib.lookupFunction<_LoadTrackPluginC, _LoadTrackPluginDart>('loadTrackPlugin');
+    } catch (_) {
+      _loadTrackPlugin = null;
+    }
+    try {
       _isSoundFontLoaded = _lib.lookupFunction<_IsSoundFontLoadedC, _IsSoundFontLoadedDart>('isSoundFontLoaded');
     } catch (_) {
       _isSoundFontLoaded = null;
@@ -139,6 +150,17 @@ class AudioEngineBridge {
   void setTrackSolo(int index, bool solo) => _setTrackSolo?.call(index, solo);
   void setTrackInstrument(int index, int program) => _setTrackInstrument(index, program);
   double getTrackPeakLevel(int index) => _getTrackPeakLevel(index);
+
+  /// Load a VST3/AU plugin onto [trackIndex]. Returns false when the engine is
+  /// unavailable or the plugin is not supported.
+  bool loadTrackPlugin(int trackIndex, String path) {
+    final fn = _loadTrackPlugin;
+    if (fn == null) return false;
+    final pathPtr = path.toNativeUtf8();
+    final result = fn(trackIndex, pathPtr);
+    malloc.free(pathPtr);
+    return result;
+  }
 
   bool isSoundFontLoaded() => _isSoundFontLoaded?.call() ?? false;
   String? getSoundFontPath() {

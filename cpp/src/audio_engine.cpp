@@ -187,7 +187,77 @@ juce::String AudioEngine::getSoundFontPath() const {
 }
 
 bool AudioEngine::loadVstPlugin(int trackIndex, const juce::String& pluginPath) {
-    return false;
+    if (trackIndex < 0 || (size_t) trackIndex >= tracks.size()) return false;
+
+    // VST3/AU hosting. The format manager is built once and kept alive for the
+    // lifetime of the engine, because plugin instances reference their format.
+    static juce::AudioPluginFormatManager formatManager;
+    static bool formatsRegistered = false;
+    if (!formatsRegistered) {
+        formatManager.addDefaultFormats(); // VST3, AU, etc. (see JUCE_PLUGINHOST_*)
+        formatsRegistered = true;
+    }
+
+    juce::File pluginFile(pluginPath);
+    if (!pluginFile.exists()) {
+        std::cerr << "[SriDAW] Plugin file not found: " << pluginPath.toStdString() << std::endl;
+        return false;
+    }
+
+    // Ask every registered format whether it recognises this file, and collect
+    // the plugin descriptions it reports.
+    juce::OwnedArray<juce::PluginDescription> descriptions;
+    for (int i = 0; i < formatManager.getNumFormats(); ++i) {
+        auto* format = formatManager.getFormat(i);
+        if (format != nullptr && format->fileMightContainThisPluginType(pluginPath)) {
+            format->findAllTypesForFile(descriptions, pluginPath);
+        }
+    }
+
+    if (descriptions.isEmpty()) {
+        std::cerr << "[SriDAW] No plugin description for: " << pluginPath.toStdString() << std::endl;
+        return false;
+    }
+
+    const bool isInstrument = descriptions[0]->isInstrument;
+    juce::String error;
+    auto instance = formatManager.createPluginInstance(*descriptions[0], sampleRate, 512, error);
+
+    if (instance == nullptr || error.isNotEmpty()) {
+        std::cerr << "[SriDAW] Failed to create plugin instance: " << error.toStdString() << std::endl;
+        return false;
+    }
+
+    instance->prepareToPlay(sampleRate, 512);
+
+    auto pluginNode = mainGraph->addNode(std::move(instance));
+    if (pluginNode == nullptr) {
+        std::cerr << "[SriDAW] Failed to add plugin node to graph" << std::endl;
+        return false;
+    }
+
+    // Instruments need MIDI; effects also accept it. Route MIDI input in and
+    // stereo audio out to the master output (mixing alongside the GM synth).
+    if (isInstrument || pluginNode->getProcessor()->acceptsMidi()) {
+        mainGraph->addConnection({
+            { midiInputNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
+            { pluginNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex }
+        });
+    }
+
+    for (int ch = 0; ch < 2; ++ch) {
+        mainGraph->addConnection({
+            { pluginNode->nodeID, ch },
+            { audioOutputNode->nodeID, ch }
+        });
+    }
+
+    // Store the node in track data for later management.
+    tracks[trackIndex].synthNode = pluginNode;
+
+    std::cout << "[SriDAW] Loaded plugin on track " << trackIndex
+              << ": " << pluginPath.toStdString() << std::endl;
+    return true;
 }
 
 void AudioEngine::clearMidiSequence() {

@@ -17,6 +17,7 @@ class AudioEngineBridge {
   void setTrackSolo(int index, bool solo) {}
   void setTrackInstrument(int index, int program) {}
   double getTrackPeakLevel(int index) => 0.0;
+  bool loadTrackPlugin(int trackIndex, String path) => false;
 
   bool isSoundFontLoaded() => false;
   String? getSoundFontPath() => null;

@@ -1,6 +1,7 @@
 /// Music-theory helpers: scales, triads, chord detection.
 ///
 /// All functions are pure/Dart-only so they work identically on native and web.
+library;
 
 const List<String> noteNames = [
   'C',
@@ -104,3 +105,116 @@ int? scaleDegree(int n, int rootNoteIndex, String scaleName) {
 }
 
 String noteLabel(int oct, int n) => '${noteNames[((n % 12) + 12) % 12]}$oct';
+
+const List<String> degreeFunctions = [
+  'TONIC',
+  'SUPERTONIC',
+  'MEDIANT',
+  'SUBDOMINANT',
+  'DOMINANT',
+  'SUBMEDIANT',
+  'LEADING TONE',
+];
+
+String degreeFunctionLabel(int degreeIndex) {
+  if (degreeIndex >= 0 && degreeIndex < degreeFunctions.length) {
+    return degreeFunctions[degreeIndex];
+  }
+  return '';
+}
+
+// ---------------------------------------------------------------------------
+// Helio-inspired harmonic-context helpers (display-only overlay logic).
+// The key signature (root + scale) is the harmonic context for row
+// highlighting, chord suggestions, and rescale. Nothing here claims Helio
+// shows every label; it powers the optional theory overlay in the roll.
+// ---------------------------------------------------------------------------
+
+/// Fixed-do solfège syllables for a 7-note scale degree (0-based).
+const List<String> solfege7 = ['Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Ti'];
+
+/// Solfège label for a pitch, or null when out of scale / non-heptatonic.
+String? solfegeFor(int n, int rootNoteIndex, String scaleName) {
+  final deg = scaleDegree(n, rootNoteIndex, scaleName);
+  if (deg == null) return null;
+  final intervals = scales[scaleName] ?? scales['Major']!;
+  if (intervals.length != 7) return null;
+  return solfege7[(deg - 1) % 7];
+}
+
+/// Roman-numeral label with conventional case/quality for major-type scales.
+/// Falls back to plain upper numerals for other scale lengths.
+String romanFor(int degree1Based, List<int> intervals, int degreeIndexForQuality) {
+  const upper7 = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+  if (intervals.length != 7) return '$degree1Based';
+  final offsets = triadForDegree(intervals, degreeIndexForQuality);
+  final q = qualityLabel(offsets[1], offsets[2]);
+  final base = upper7[(degree1Based - 1) % 7];
+  switch (q) {
+    case 'min':
+      return base.toLowerCase();
+    case 'dim':
+      return '${base.toLowerCase()}°';
+    case 'aug':
+      return '$base+';
+    default:
+      return base;
+  }
+}
+
+/// True when this pitch-class is the dominant (5th degree) of the key.
+bool isDominantPc(int n, int rootNoteIndex, String scaleName) {
+  final intervals = scales[scaleName] ?? scales['Major']!;
+  if (intervals.length < 5) return false;
+  final rel = ((n - rootNoteIndex) % 12 + 12) % 12;
+  return rel == intervals[4];
+}
+
+/// True when this pitch-class is the tonic of the key.
+bool isTonicPc(int n, int rootNoteIndex, String scaleName) {
+  return (((n - rootNoteIndex) % 12) + 12) % 12 == 0;
+}
+
+/// Named chord shapes (semitone offsets from the tapped root) for the
+/// double-tap chord tool. Independent of the key; the dialog reports
+/// whether every tone sits in the current scale.
+const Map<String, List<int>> namedChordShapes = {
+  'Major': [0, 4, 7],
+  'Minor': [0, 3, 7],
+  '7': [0, 4, 7, 10],
+  'maj7': [0, 4, 7, 11],
+  'm7': [0, 3, 7, 10],
+  'sus2': [0, 2, 7],
+  'sus4': [0, 5, 7],
+  'dim': [0, 3, 6],
+  'aug': [0, 4, 8],
+};
+
+/// True when every offset of a named chord sits inside the current scale.
+bool chordInScale(
+    int rootPc, List<int> offsets, int keyRoot, String scaleName) {
+  final intervals = scales[scaleName] ?? scales['Major']!;
+  for (final off in offsets) {
+    final pc = (rootPc + off) % 12;
+    final rel = ((pc - keyRoot) % 12 + 12) % 12;
+    if (!intervals.contains(rel)) return false;
+  }
+  return true;
+}
+
+/// Map a pitch to the nearest pitch-class inside [targetIntervals] relative
+/// to [targetRoot]. Used by the quick-rescale function.
+int nearestInScalePc(int pc, int targetRoot, List<int> targetIntervals) {
+  int best = targetRoot;
+  int bestDist = 99;
+  for (final iv in targetIntervals) {
+    final cand = (targetRoot + iv) % 12;
+    int d = (pc - cand).abs();
+    d = d > 6 ? 12 - d : d;
+    if (d < bestDist) {
+      bestDist = d;
+      best = cand;
+    }
+  }
+  return best;
+}

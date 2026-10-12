@@ -1,0 +1,25 @@
+{
+  "name": "Untitled",
+  "bpm": 120,
+  "stepsPerBeat": 4,
+  "beatsPerBar": 4,
+  "totalBars": 4,
+  "tracks": [
+    {
+      "name": "Track 1",
+      "type": "synth",
+      "colorIndex": 5,
+      "instrument": 0,
+      "channel": 0,
+      "mute": false,
+      "solo": false,
+      "volume": 100,
+      "pan": 0,
+      "notes": []
+    }
+  ],
+  "activeTrack": 0,
+  "scaleRoot": 0,
+  "scaleName": "Major",
+  "selection": []
+}
