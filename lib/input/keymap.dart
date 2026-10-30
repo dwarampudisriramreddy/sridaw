@@ -24,17 +24,19 @@ enum DawAction {
   drawToggle,
   eraseToggle,
   replacePitch,
-  visualToggle,
-  visualLineToggle,
   deleteSelection,
   yankSelection,
   pasteAfter,
   pasteBefore,
+  cutSelection,
+  openClip,
+  selectAll,
   undo,
   redo,
   repeatLast,
   enterCommand,
   chordPrefix,
+  strumPrefix,
   lengthUp,
   lengthDown,
   cancel,
@@ -53,12 +55,12 @@ enum DawAction {
   stop,
   record,
   viewRoll,
-  viewPattern,
   viewArrangement,
   viewMixer,
   viewSample,
   viewAutomation,
   viewHelp,
+  viewDrumMachine,
   focusNext,
   focusPrev,
   focusFirst,
@@ -99,9 +101,11 @@ class Keymap {
     if (ctrl) {
       return switch (key) {
         LogicalKeyboardKey.space => DawAction.playPause,
+        LogicalKeyboardKey.keyA => DawAction.selectAll,
         LogicalKeyboardKey.keyR => DawAction.redo,
+        // `2` is free: the pattern tab was removed, now it opens the drum machine.
         LogicalKeyboardKey.digit1 => DawAction.viewRoll,
-        LogicalKeyboardKey.digit2 => DawAction.viewPattern,
+        LogicalKeyboardKey.digit2 => DawAction.viewDrumMachine,
         LogicalKeyboardKey.digit3 => DawAction.viewArrangement,
         LogicalKeyboardKey.digit4 => DawAction.viewMixer,
         LogicalKeyboardKey.digit5 => DawAction.viewSample,
@@ -159,20 +163,23 @@ class Keymap {
       case LogicalKeyboardKey.keyG:
         return shifted ? DawAction.gotoLastLine : DawAction.gotoPrefix;
       case LogicalKeyboardKey.space:
+        return DawAction.playPause;
       case LogicalKeyboardKey.keyI:
         return DawAction.drawToggle;
+      case LogicalKeyboardKey.keyS:
+        return DawAction.strumPrefix;
       case LogicalKeyboardKey.keyX:
-        return DawAction.eraseToggle;
+        return DawAction.cutSelection;
       case LogicalKeyboardKey.keyR:
         return DawAction.replacePitch;
       case LogicalKeyboardKey.keyV:
-        return shifted ? DawAction.visualLineToggle : DawAction.visualToggle;
+        return shift ? DawAction.pasteBefore : DawAction.pasteAfter;
       case LogicalKeyboardKey.keyU:
         return DawAction.undo;
       case LogicalKeyboardKey.keyY:
         return DawAction.yankSelection;
       case LogicalKeyboardKey.keyP:
-        return shift ? DawAction.pasteBefore : DawAction.pasteAfter;
+        return DawAction.openClip;
       case LogicalKeyboardKey.keyD:
         return DawAction.deleteSelection;
       case LogicalKeyboardKey.keyQ:
@@ -263,15 +270,18 @@ class Keymap {
     'G': DawAction.gotoLastLine,
     'gg': DawAction.lowestPitch,
     'i': DawAction.drawToggle,
-    'x': DawAction.eraseToggle,
-    'v': DawAction.visualToggle,
-    'V': DawAction.visualLineToggle,
+    'x': DawAction.cutSelection,
+    'X': DawAction.cutSelection,
+    'v': DawAction.pasteAfter,
+    'V': DawAction.pasteBefore,
     'u': DawAction.undo,
     'd': DawAction.deleteSelection,
     'y': DawAction.yankSelection,
-    'p': DawAction.pasteAfter,
-    'P': DawAction.pasteBefore,
+    'p': DawAction.openClip,
+    'P': DawAction.openClip,
+    's': DawAction.strumPrefix,
     'c': DawAction.chordPrefix,
+    ' ': DawAction.playPause,
     ']': DawAction.lengthUp,
     '[': DawAction.lengthDown,
     // 'g' and 'G' already mapped to gotoPrefix/gotoLastLine in _normal.

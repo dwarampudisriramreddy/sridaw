@@ -1,11 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:sridaw/main.dart';
 
 void main() {
-  testWidgets('probe overflows', (tester) async {
+  testWidgets('no layout overflow or paint errors in any view (800x600)', (tester) async {
     tester.view.physicalSize = const Size(800, 600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -23,15 +22,12 @@ void main() {
 
     Future<void> go(int d) async {
       await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-      await tester.pump();
       await tester.sendKeyDownEvent(digits[d]!);
-      await tester.pump();
       await tester.sendKeyUpEvent(digits[d]!);
-      await tester.pump();
       await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
       await tester.pump();
       final e = tester.takeException();
-      if (e != null) debugPrint('ORIG($d): $e');
+      expect(e, isNull, reason: 'view $d threw: $e');
     }
 
     for (final d in [2, 4, 5, 6, 1]) {

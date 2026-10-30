@@ -172,8 +172,15 @@ class _AutomationViewState extends State<AutomationView> {
             ),
           ),
           const SizedBox(width: 12),
-          Text('h/l step · j/k value · [ ] lane · i point · d delete',
-              style: DawFonts.uiSmall.copyWith(color: DawColors.textFaint)),
+          Flexible(
+            child: Text(
+              'h/l step · j/k value · [ ] lane · i point · d delete',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: DawFonts.uiSmall.copyWith(color: DawColors.textFaint),
+            ),
+          ),
         ],
       ),
     );
@@ -235,12 +242,17 @@ class _AutomationViewState extends State<AutomationView> {
           Text('step ${widget.cursorStep} · value ${widget.cursorValue}',
               style: DawFonts.mono9.copyWith(color: DawColors.textMuted)),
           const Spacer(),
-          Text(
-            lane == null
-                ? ''
-                : '${lane.name} · ${lane.points.length} pts'
-                    '${cur == null ? '' : ' · last ${cur.value}@${cur.step}'}',
-            style: DawFonts.uiSmall.copyWith(color: accentColor(lane)),
+          Flexible(
+            child: Text(
+              lane == null
+                  ? ''
+                  : '${lane.name} · ${lane.points.length} pts'
+                      '${cur == null ? '' : ' · last ${cur.value}@${cur.step}'}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: DawFonts.uiSmall.copyWith(color: accentColor(lane)),
+            ),
           ),
         ],
       ),

@@ -60,15 +60,26 @@ class BrowserView extends StatelessWidget {
           children: [
             _buildHeader(selected),
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildCategories(),
-                  Container(width: 1, color: DawColors.borderSoft),
-                  Expanded(child: _buildEntryList()),
-                  Container(width: 1, color: DawColors.borderSoft),
-                  SizedBox(width: 200, child: _buildDetails(selected)),
-                ],
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // On phones the details pane would squeeze the program list to
+                  // nothing, so only show it when there is room for it.
+                  final showDetails = constraints.maxWidth >= 560;
+                  final categoriesW =
+                      constraints.maxWidth < 420 ? 96.0 : 140.0;
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(width: categoriesW, child: _buildCategories()),
+                      Container(width: 1, color: DawColors.borderSoft),
+                      Expanded(child: _buildEntryList()),
+                      if (showDetails) ...[
+                        Container(width: 1, color: DawColors.borderSoft),
+                        SizedBox(width: 200, child: _buildDetails(selected)),
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
             _buildFooter(selected),
@@ -98,57 +109,60 @@ class BrowserView extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Text('h/l family · j/k program · i load',
-              style: DawFonts.uiSmall.copyWith(color: DawColors.textFaint)),
+          Flexible(
+            child: Text(
+              'h/l family · j/k program · i load',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: DawFonts.uiSmall.copyWith(color: DawColors.textFaint),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildCategories() {
-    return SizedBox(
-      width: 140,
-      child: ListView.builder(
-        itemCount: categories.length,
-        itemBuilder: (context, i) {
-          final isSelected = i == categoryIndex;
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => onCategoryTap?.call(i),
-            child: Container(
-              height: 32,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              color: isSelected
-                  ? accent.accent.withValues(alpha: 0.18)
-                  : (i.isEven ? DawColors.surface : Colors.transparent),
-              child: Row(
-                children: [
-                  Container(
-                    width: 3,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: isSelected ? accent.accent : Colors.transparent,
-                      borderRadius: BorderRadius.circular(2),
+    return ListView.builder(
+      itemCount: categories.length,
+      itemBuilder: (context, i) {
+        final isSelected = i == categoryIndex;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onCategoryTap?.call(i),
+          child: Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            color: isSelected
+                ? accent.accent.withValues(alpha: 0.18)
+                : (i.isEven ? DawColors.surface : Colors.transparent),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: isSelected ? accent.accent : Colors.transparent,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    categories[i],
+                    overflow: TextOverflow.ellipsis,
+                    style: DawFonts.ui.copyWith(
+                      color: isSelected ? DawColors.text : DawColors.textMuted,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      categories[i],
-                      overflow: TextOverflow.ellipsis,
-                      style: DawFonts.ui.copyWith(
-                        color:
-                            isSelected ? DawColors.text : DawColors.textMuted,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -206,26 +220,28 @@ class BrowserView extends StatelessWidget {
     return Container(
       color: DawColors.panelBg,
       padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('DETAILS', style: DawFonts.display(size: 10, spacing: 2)),
-          const SizedBox(height: 12),
-          if (selected != null) ...[
-            Text(selected.name,
-                style: DawFonts.ui.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            _row('Family', selected.family),
-            _row('Program', selected.program.toString()),
-            _row('Bank', '0 (GM)'),
-            _row('Channel', '${project.track.channel + 1}'),
-            _row('Track', project.track.name),
-            const Spacer(),
-            Text('Loaded onto the active track',
-                style: DawFonts.uiSmall.copyWith(color: DawColors.textFaint)),
-          ] else
-            Text('—', style: DawFonts.ui.copyWith(color: DawColors.textFaint)),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('DETAILS', style: DawFonts.display(size: 10, spacing: 2)),
+            const SizedBox(height: 12),
+            if (selected != null) ...[
+              Text(selected.name,
+                  style: DawFonts.ui.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              _row('Family', selected.family),
+              _row('Program', selected.program.toString()),
+              _row('Bank', '0 (GM)'),
+              _row('Channel', '${project.track.channel + 1}'),
+              _row('Track', project.track.name),
+              const SizedBox(height: 16),
+              Text('Loaded onto the active track',
+                  style: DawFonts.uiSmall.copyWith(color: DawColors.textFaint)),
+            ] else
+              Text('—', style: DawFonts.ui.copyWith(color: DawColors.textFaint)),
+          ],
+        ),
       ),
     );
   }
@@ -259,12 +275,20 @@ class BrowserView extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Text('${entries.length} programs',
-              style: DawFonts.uiSmall.copyWith(color: DawColors.textMuted)),
+          Flexible(
+            child: Text(
+              '${entries.length} programs',
+              overflow: TextOverflow.ellipsis,
+              style: DawFonts.uiSmall.copyWith(color: DawColors.textMuted),
+            ),
+          ),
           const Spacer(),
-          Text(
-            selected == null ? '' : 'i · load ${selected.name}',
-            style: DawFonts.uiSmall.copyWith(color: accent.accent),
+          Flexible(
+            child: Text(
+              selected == null ? '' : 'i · load ${selected.name}',
+              overflow: TextOverflow.ellipsis,
+              style: DawFonts.uiSmall.copyWith(color: accent.accent),
+            ),
           ),
         ],
       ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -63,6 +64,12 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     if (!mounted) return;
     if (!_focus.hasFocus) {
       _focus.requestFocus();
+    }
+    // On mobile, focusing programmatically does not always pop the IME up
+    // (notably right after startup), so ask for it explicitly.
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
     }
   }
 

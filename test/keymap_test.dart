@@ -14,15 +14,16 @@ void main() {
       expect(Keymap.resolveChar('b'), DawAction.prevNote);
     });
 
-    test('case is preserved so V is line-select, not visual', () {
-      expect(Keymap.resolveChar('v'), DawAction.visualToggle);
-      expect(Keymap.resolveChar('V'), DawAction.visualLineToggle);
+    test('case is preserved so V pastes before and v pastes after', () {
+      expect(Keymap.resolveChar('v'), DawAction.pasteAfter);
+      expect(Keymap.resolveChar('V'), DawAction.pasteBefore);
       expect(Keymap.resolveChar('G'), DawAction.gotoLastLine);
     });
 
     test('mode keys and command key resolve', () {
       expect(Keymap.resolveChar('i'), DawAction.drawToggle);
-      expect(Keymap.resolveChar('x'), DawAction.eraseToggle);
+      expect(Keymap.resolveChar('x'), DawAction.cutSelection);
+      expect(Keymap.resolveChar('X'), DawAction.cutSelection);
       expect(Keymap.resolveChar(':'), DawAction.enterCommand);
       expect(Keymap.resolveChar('u'), DawAction.undo);
     });
@@ -40,8 +41,6 @@ void main() {
         'INSERT',
         'DRAW',
         'ERASE',
-        'VISUAL',
-        'V-LINE',
         'COMMAND',
         'PIANO',
         'REPLACE',

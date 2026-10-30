@@ -7,8 +7,6 @@ enum InputMode {
   insert,
   draw,
   erase,
-  visual,
-  visualLine,
   command,
   piano,
   replace,
@@ -20,20 +18,18 @@ extension InputModeLabel on InputMode {
         InputMode.insert => 'INSERT',
         InputMode.draw => 'DRAW',
         InputMode.erase => 'ERASE',
-        InputMode.visual => 'VISUAL',
-        InputMode.visualLine => 'V-LINE',
         InputMode.command => 'COMMAND',
         InputMode.piano => 'PIANO',
         InputMode.replace => 'REPLACE',
       };
 }
 
-enum ViewMode { roll, pattern, arrangement, mixer, sample, automation, help }
+enum ViewMode { roll, drumMachine, arrangement, mixer, sample, automation, help }
 
 extension ViewModeLabel on ViewMode {
   String get label => switch (this) {
         ViewMode.roll => 'ROLL',
-        ViewMode.pattern => 'PATTERN',
+        ViewMode.drumMachine => 'DRUMS',
         ViewMode.arrangement => 'ARRANGE',
         ViewMode.mixer => 'MIXER',
         ViewMode.sample => 'SAMPLE',

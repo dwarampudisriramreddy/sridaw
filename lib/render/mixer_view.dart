@@ -110,17 +110,20 @@ class _MixerViewState extends State<MixerView> {
           Text('MIXER', style: DawFonts.uiSmall.copyWith(color: DawColors.textMuted)),
           const SizedBox(width: 16),
           Expanded(
-            child: Row(
-              children: [
-                _headerCell('GAIN', 80),
-                _headerCell('PAN', 60),
-                _headerCell('M', 24),
-                _headerCell('S', 24),
-                _headerCell('R', 24),
-                _headerCell('SEND A', 70),
-                _headerCell('SEND B', 70),
-                _headerCell('PROG', 50),
-              ],
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _headerCell('GAIN', 80),
+                  _headerCell('PAN', 60),
+                  _headerCell('M', 24),
+                  _headerCell('S', 24),
+                  _headerCell('R', 24),
+                  _headerCell('SEND A', 70),
+                  _headerCell('SEND B', 70),
+                  _headerCell('PROG', 50),
+                ],
+              ),
             ),
           ),
         ],
@@ -155,9 +158,10 @@ class _MixerViewState extends State<MixerView> {
           border: Border.all(color: ch.color.withValues(alpha: 0.3)),
           borderRadius: BorderRadius.circular(6),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
             // Name
             Text(
               ch.name,
@@ -203,13 +207,13 @@ class _MixerViewState extends State<MixerView> {
                 _MiniFader(value: ch.sends[1], label: 'B', color: Colors.purple, onChanged: (v) => setState(() => ch.sends[1] = v)),
               ],
             ),
-            // Program selector
             _ProgramSelect(
               program: ch.program,
               bank: ch.bank,
               onChanged: (p, b) => setState(() { ch.program = p; ch.bank = b; _notifyChange(ch); }),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -509,15 +513,18 @@ class _ProgramSelect extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('B:', style: DawFonts.mono10.copyWith(color: DawColors.textMuted)),
-        _tinyField(bank?.toString() ?? '—', (v) => onChanged(program, int.tryParse(v))),
-        const SizedBox(width: 4),
-        Text('P:', style: DawFonts.mono10.copyWith(color: DawColors.textMuted)),
-        _tinyField(program?.toString() ?? '—', (v) => onChanged(int.tryParse(v), bank)),
-      ],
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('B:', style: DawFonts.mono10.copyWith(color: DawColors.textMuted)),
+          _tinyField(bank?.toString() ?? '—', (v) => onChanged(program, int.tryParse(v))),
+          const SizedBox(width: 4),
+          Text('P:', style: DawFonts.mono10.copyWith(color: DawColors.textMuted)),
+          _tinyField(program?.toString() ?? '—', (v) => onChanged(int.tryParse(v), bank)),
+        ],
+      ),
     );
   }
 

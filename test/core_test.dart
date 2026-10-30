@@ -100,7 +100,7 @@ void main() {
 
     test('mode labels are stable', () {
       expect(InputMode.normal.label, 'NORMAL');
-      expect(InputMode.visualLine.label, 'V-LINE');
+      expect(InputMode.replace.label, 'REPLACE');
     });
   });
 }

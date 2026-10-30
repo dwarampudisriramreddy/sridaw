@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../input/daw_input.dart';
@@ -71,6 +73,10 @@ class ArrangementView extends StatefulWidget {
   final int revision;
   final VoidCallback? onAddTrack;
   final void Function(int trackIndex, ArrangementClip)? onClipTap;
+  final void Function(int trackIndex, ArrangementClip)? onClipOpen;
+  final void Function(int trackIndex, int step)? onTimelineTap;
+  final void Function(int trackIndex)? onTrackTap;
+  final void Function(int trackIndex)? onTrackOpen;
   final void Function(int trackIndex, ArrangementClip, int newStart, int newLength)? onClipMoveResize;
   final void Function(int trackIndex, ArrangementClip)? onClipDelete;
 
@@ -90,6 +96,10 @@ class ArrangementView extends StatefulWidget {
     this.revision = 0,
     this.onAddTrack,
     this.onClipTap,
+    this.onClipOpen,
+    this.onTimelineTap,
+    this.onTrackTap,
+    this.onTrackOpen,
     this.onClipMoveResize,
     this.onClipDelete,
   });
@@ -105,6 +115,22 @@ class _ArrangementViewState extends State<ArrangementView> {
   int _trackHeight = 80;
   int _headerWidth = 180;
   int _rulerHeight = 32;
+
+  // Manual double-tap detection so single taps stay immediate (GestureDetector
+  // would otherwise wait out the double-tap timeout before firing onTap).
+  Timer? _timelineTapTimer;
+  bool _timelineTapPending = false;
+  Offset? _lastTimelineTapPos;
+  Timer? _headerTapTimer;
+  bool _headerTapPending = false;
+  int? _lastHeaderTrack;
+
+  @override
+  void dispose() {
+    _timelineTapTimer?.cancel();
+    _headerTapTimer?.cancel();
+    super.dispose();
+  }
 
   int get _totalSteps => widget.project.totalSteps;
   int get _bars => (_totalSteps / widget.project.stepsPerBar).ceil();
@@ -136,43 +162,56 @@ class _ArrangementViewState extends State<ArrangementView> {
                     top: _rulerHeight.toDouble(),
                     left: _headerWidth.toDouble(),
                     child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
+                      scrollDirection: Axis.vertical,
                       child: SingleChildScrollView(
-                        scrollDirection: Axis.vertical,
+                        scrollDirection: Axis.horizontal,
                         child: SizedBox(
                           width: contentWidth.toDouble(),
                           height: (_tracks.length * _trackHeight).toDouble(),
-                          child: CustomPaint(
-                            painter: _ArrangementPainter(
-                              tracks: _tracks,
-                              barWidth: _barWidth,
-                              trackHeight: _trackHeight,
-                              headerWidth: 0,
-                              rulerHeight: _rulerHeight,
-                              stepsPerBar: widget.project.stepsPerBar,
-                              beatsPerBar: widget.project.beatsPerBar,
-                              playheadPos: _playheadPos,
-                              accent: widget.accent,
-                              selection: _selectedClips,
-                              cursorTrack: widget.cursorTrack,
-                              cursorStep: widget.cursorStep,
-                              selecting: widget.selecting,
-                              anchorTrack: widget.anchorTrack,
-                              anchorStep: widget.anchorStep,
-                              revision: widget.revision,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTapDown: (d) =>
+                                _handleTimelineTap(d.localPosition),
+                            child: CustomPaint(
+                              painter: _ArrangementPainter(
+                                tracks: _tracks,
+                                barWidth: _barWidth,
+                                trackHeight: _trackHeight,
+                                headerWidth: 0,
+                                rulerHeight: _rulerHeight,
+                                stepsPerBar: widget.project.stepsPerBar,
+                                beatsPerBar: widget.project.beatsPerBar,
+                                playheadPos: _playheadPos,
+                                accent: widget.accent,
+                                selection: _selectedClips,
+                                cursorTrack: widget.cursorTrack,
+                                cursorStep: widget.cursorStep,
+                                selecting: widget.selecting,
+                                anchorTrack: widget.anchorTrack,
+                                anchorStep: widget.anchorStep,
+                                revision: widget.revision,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                  // Fixed ruler
+                  // Scrollable ruler (syncs with horizontal scroll)
                   Positioned(
                     top: 0,
                     left: _headerWidth.toDouble(),
                     right: 0,
                     height: _rulerHeight.toDouble(),
-                    child: _buildRuler(),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const ClampingScrollPhysics(),
+                      child: SizedBox(
+                        width: contentWidth.toDouble(),
+                        height: _rulerHeight.toDouble(),
+                        child: _buildRuler(),
+                      ),
+                    ),
                   ),
                   // Fixed track headers
                   Positioned(
@@ -210,6 +249,65 @@ class _ArrangementViewState extends State<ArrangementView> {
     return _tracks.expand((t) => t.clips.where((c) => c.selected)).toList();
   }
 
+  /// Touch: tapping the timeline selects the track/clip under the finger;
+  /// double-tapping a clip opens it in the piano roll.
+  void _handleTimelineTap(Offset local) {
+    if (_tracks.isEmpty) return;
+    final isDouble = _timelineTapPending &&
+        (_lastTimelineTapPos == null ||
+            (_lastTimelineTapPos! - local).distance <= 36);
+    _lastTimelineTapPos = local;
+    _timelineTapTimer?.cancel();
+    if (isDouble) {
+      _timelineTapPending = false;
+    } else {
+      _timelineTapPending = true;
+      _timelineTapTimer = Timer(const Duration(milliseconds: 300), () {
+        _timelineTapPending = false;
+      });
+    }
+
+    final trackIndex =
+        (local.dy / _trackHeight).floor().clamp(0, _tracks.length - 1);
+    final step = (local.dx / _barWidth * widget.project.stepsPerBar)
+        .floor()
+        .clamp(0, widget.project.totalSteps - 1);
+    ArrangementClip? clip;
+    for (final c in _tracks[trackIndex].clips) {
+      if (step >= c.start && step < c.start + c.length) {
+        clip = c;
+        break;
+      }
+    }
+    if (isDouble) {
+      if (clip != null) {
+        widget.onClipOpen?.call(trackIndex, clip);
+      } else {
+        widget.onTrackOpen?.call(trackIndex);
+      }
+    } else if (clip != null) {
+      widget.onClipTap?.call(trackIndex, clip);
+    } else {
+      widget.onTimelineTap?.call(trackIndex, step);
+    }
+  }
+
+  void _handleTrackHeaderTap(int index) {
+    final isDouble = _headerTapPending && _lastHeaderTrack == index;
+    _lastHeaderTrack = index;
+    _headerTapTimer?.cancel();
+    if (isDouble) {
+      _headerTapPending = false;
+      widget.onTrackOpen?.call(index);
+    } else {
+      _headerTapPending = true;
+      _headerTapTimer = Timer(const Duration(milliseconds: 300), () {
+        _headerTapPending = false;
+      });
+      widget.onTrackTap?.call(index);
+    }
+  }
+
 Widget _buildToolbar() {
     return Container(
       height: 40,
@@ -219,8 +317,14 @@ Widget _buildToolbar() {
         children: [
           IconButton(icon: const Icon(Icons.add, size: 18), tooltip: 'Add Track', onPressed: widget.onAddTrack),
           const SizedBox(width: 8),
-          Text('Bars: $_bars  Steps/Bar: ${widget.project.stepsPerBar}', style: DawFonts.uiSmall.copyWith(color: DawColors.textMuted)),
-          const Spacer(),
+          Expanded(
+            child: Text(
+              'Bars: $_bars  Steps/Bar: ${widget.project.stepsPerBar}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: DawFonts.uiSmall.copyWith(color: DawColors.textMuted),
+            ),
+          ),
           Text('Zoom:', style: DawFonts.uiSmall.copyWith(color: DawColors.textMuted)),
           IconButton(
             icon: const Icon(Icons.zoom_out, size: 18),
@@ -264,6 +368,7 @@ Widget _buildToolbar() {
           index: i,
           height: _trackHeight,
           accent: widget.accent,
+          onTap: () => _handleTrackHeaderTap(i),
           onMute: () => setState(() => _tracks[i].mute = !_tracks[i].mute),
           onSolo: () => setState(() => _tracks[i].solo = !_tracks[i].solo),
           onRecArm: () => setState(() => _tracks[i].recArm = !_tracks[i].recArm),
@@ -278,6 +383,7 @@ class _TrackHeader extends StatelessWidget {
   final int index;
   final int height;
   final DawAccent accent;
+  final VoidCallback onTap;
   final VoidCallback onMute;
   final VoidCallback onSolo;
   final VoidCallback onRecArm;
@@ -287,6 +393,7 @@ class _TrackHeader extends StatelessWidget {
     required this.index,
     required this.height,
     required this.accent,
+    required this.onTap,
     required this.onMute,
     required this.onSolo,
     required this.onRecArm,
@@ -294,28 +401,32 @@ class _TrackHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: height.toDouble(),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: DawColors.borderSoft)),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 24,
-            child: Text('${index + 1}', style: DawFonts.mono9.copyWith(color: DawColors.textMuted), textAlign: TextAlign.right),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(track.name, style: DawFonts.uiBold.copyWith(color: track.color, fontSize: 11), overflow: TextOverflow.ellipsis),
-          ),
-          _MiniButton(label: 'M', active: track.mute, color: Colors.red, onTap: onMute),
-          const SizedBox(width: 4),
-          _MiniButton(label: 'S', active: track.solo, color: Colors.yellow, onTap: onSolo),
-          const SizedBox(width: 4),
-          _MiniButton(label: 'R', active: track.recArm, color: Colors.red, onTap: onRecArm),
-        ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => onTap(),
+      child: Container(
+        height: height.toDouble(),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: DawColors.borderSoft)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 24,
+              child: Text('${index + 1}', style: DawFonts.mono9.copyWith(color: DawColors.textMuted), textAlign: TextAlign.right),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(track.name, style: DawFonts.uiBold.copyWith(color: track.color, fontSize: 11), overflow: TextOverflow.ellipsis),
+            ),
+            _MiniButton(label: 'M', active: track.mute, color: Colors.red, onTap: onMute),
+            const SizedBox(width: 4),
+            _MiniButton(label: 'S', active: track.solo, color: Colors.yellow, onTap: onSolo),
+            const SizedBox(width: 4),
+            _MiniButton(label: 'R', active: track.recArm, color: Colors.red, onTap: onRecArm),
+          ],
+        ),
       ),
     );
   }

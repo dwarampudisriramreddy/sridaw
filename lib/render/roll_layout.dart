@@ -21,16 +21,22 @@ class RollLayout {
   final int width;
   final int height;
 
+  /// Width of the left gutter this surface actually uses. The piano roll
+  /// keeps the default [keyW]; the drum machine widens it so the sound names
+  /// fit.
+  final int gutterW;
+
   const RollLayout({
     required this.viewLowPitch,
     required this.viewCol,
     required this.width,
     required this.height,
+    this.gutterW = keyW,
   });
 
-  int get gridX => keyW;
+  int get gridX => gutterW;
   int get gridY => rulerH;
-  int get gridW => width - keyW;
+  int get gridW => width - gutterW;
   int get gridH => height - rulerH;
   int get rows => gridH ~/ cellH;
   int get cols => gridW ~/ cellW;

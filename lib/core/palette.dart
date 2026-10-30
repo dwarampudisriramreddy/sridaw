@@ -29,7 +29,7 @@ class PixelPalette {
   /// Accent 1 (cursor, mode chip).
   Color get accent => colors[5];
 
-  /// Accent 2 (visual selection).
+  /// Accent 2 (box selection).
   Color get accent2 => colors[6];
 
   /// Playhead / record.

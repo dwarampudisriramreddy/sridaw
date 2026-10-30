@@ -8,6 +8,7 @@ import '../model/project.dart';
 import '../music_theory.dart' as theory;
 import '../ui/daw_theme.dart';
 import 'roll_layout.dart';
+import '../model/drum_map.dart';
 
 /// Everything the roll painter needs for one frame. The painter is a pure
 /// function of this state, which keeps repaints cheap and tests deterministic.
@@ -274,10 +275,6 @@ class PianoRollPainter extends CustomPainter {
   void _drawBox(Canvas canvas) {
     final anchor = scene.boxAnchor;
     if (anchor == null) return;
-    if (scene.mode != InputMode.visual &&
-        scene.mode != InputMode.visualLine) {
-      return;
-    }
     final l = _l;
     final p0 = math.min(anchor.pitch, scene.pointer.pitch);
     final p1 = math.max(anchor.pitch, scene.pointer.pitch);
@@ -333,10 +330,7 @@ class PianoRollPainter extends CustomPainter {
   void _drawCursor(Canvas canvas) {
     final l = _l;
     final p = scene.pointer;
-    final visual =
-        scene.mode == InputMode.visual || scene.mode == InputMode.visualLine;
-    final color = visual ? scene.accent2 : scene.accent;
-
+    final color = scene.boxAnchor == null ? scene.accent : scene.accent2;
     final gridTop = l.gridY.toDouble();
     final gridH = l.gridH.toDouble();
     final gridLeft = l.gridX.toDouble();
@@ -386,11 +380,58 @@ class PianoRollPainter extends CustomPainter {
     final l = _l;
     final keyW = RollLayout.keyW.toDouble();
     final height = l.height.toDouble();
+    final drum = isDrumTrack(scene.project.track);
 
     canvas.drawRect(
       Rect.fromLTWH(0, 0, keyW, height),
       Paint()..color = DawColors.surface,
     );
+
+    if (drum) {
+      for (var pitch = l.viewLowPitch; pitch <= l.topPitch; pitch++) {
+        final y = l.yForPitch(pitch).toDouble();
+        final underCursor = pitch == scene.pointer.pitch;
+        final hasNote = scene.project.track.notes.any((n) => n.pitch == pitch);
+        final selectedRow = scene.project.selection.any((n) => n.pitch == pitch);
+        final short = drumShortFor(pitch) ?? drumNameFor(pitch);
+        final isCommon = short != null;
+
+        final rect = Rect.fromLTWH(1, y + 0.5, keyW - 6, RollLayout.cellH - 1.0);
+        final r = RRect.fromRectAndRadius(rect, const Radius.circular(2.5));
+        Color bg = isCommon ? const Color(0xFF262626) : const Color(0xFF1A1A1A);
+        if (underCursor) bg = scene.accent;
+        else if (selectedRow) bg = Color.lerp(bg, scene.accent2, 0.4)!;
+        else if (hasNote) bg = Color.lerp(bg, scene.accent, 0.35)!;
+        canvas.drawRRect(r, Paint()..color = bg);
+        canvas.drawRRect(
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = DawColors.border,
+        );
+
+        final labelColor = underCursor
+            ? const Color(0xE6000000)
+            : isCommon
+                ? DawColors.text
+                : DawColors.textFaint;
+        _textVertical(
+          canvas,
+          short ?? pitch.toString(),
+          13,
+          y + RollLayout.cellH / 2,
+          color: labelColor,
+          size: isCommon ? 8.5 : 7.5,
+          weight: isCommon ? FontWeight.w700 : FontWeight.w500,
+        );
+      }
+      canvas.drawRect(
+        Rect.fromLTWH(keyW - 1, 0, 1, height),
+        Paint()..color = DawColors.border,
+      );
+      return;
+    }
 
     for (var pitch = l.viewLowPitch; pitch <= l.topPitch; pitch++) {
       final y = l.yForPitch(pitch).toDouble();

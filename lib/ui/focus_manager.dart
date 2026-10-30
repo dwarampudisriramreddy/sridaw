@@ -14,7 +14,6 @@ class FocusManager {
 
   final Map<ViewMode, List<FocusNode>> _viewNodes = {
     ViewMode.roll: [],
-    ViewMode.pattern: [],
     ViewMode.arrangement: [],
     ViewMode.mixer: [],
     ViewMode.sample: [],

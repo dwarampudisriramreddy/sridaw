@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
 import '../ffi/audio_bindings.dart'
     if (dart.library.js_interop) '../ffi/audio_bindings_web.dart';
 
@@ -22,7 +25,34 @@ class DawAudioEngine {
       _bridge = null;
       _available = false;
     }
+    if (_available) await _loadDefaultSoundFont();
     return _available;
+  }
+
+  /// The bundled GeneralUser SoundFont is only reachable through the Android
+  /// asset bundle; MainActivity extracts it to the cache dir and this loads
+  /// it into FluidSynth. Without it the engine runs but is silent.
+  Future<void> _loadDefaultSoundFont() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      final path = await const MethodChannel('com.ram.sridaw/assets')
+          .invokeMethod<String>('extractSoundFont');
+      if (path != null) loadSoundFont(path);
+    } catch (_) {}
+  }
+
+  void loadSoundFont(String path) {
+    try {
+      _bridge?.loadSoundFont(path);
+    } catch (_) {}
+  }
+
+  bool get soundFontLoaded {
+    try {
+      return _bridge?.isSoundFontLoaded() ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   void shutdown() {
