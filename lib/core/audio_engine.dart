@@ -117,7 +117,9 @@ class DawAudioEngine {
       _previewTimers.remove(key);
       try {
         _bridge?.playPreviewNote(channel, pitch, 0);
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('extractSoundFont failed: $e');
+      }
     });
   }
 
