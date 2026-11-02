@@ -11,6 +11,27 @@ namespace
         if (level <= FLUID_ERR)
             std::cerr << "[fluidsynth] " << message << std::endl;
     }
+
+    // Track/MIDI channel 9 (0-based) == GM channel 10, the percussion kit.
+    constexpr int kDrumChannel = 9;
+
+    // Without this the drum channel plays melodic programs, so drum tracks
+    // come out as piano notes (or silence on SoundFonts that only map GM
+    // percussion under bank 128).
+    void markDrumChannel(fluid_synth_t* s, int channel)
+    {
+        if (s == nullptr) return;
+        fluid_synth_set_channel_type(s, channel, CHANNEL_TYPE_DRUM);
+        fluid_synth_bank_select(s, channel, 128);
+    }
+
+    void selectProgram(fluid_synth_t* s, int channel, int program)
+    {
+        if (s == nullptr) return;
+        if (channel == kDrumChannel)
+            fluid_synth_bank_select(s, channel, 128);
+        fluid_synth_program_change(s, channel, program);
+    }
 }
 
 GMSynthProcessor::GMSynthProcessor()
@@ -46,6 +67,7 @@ void GMSynthProcessor::createSynth(double sampleRate)
     fluid_settings_setnum(settings, "synth.gain", masterGain);
 
     synth = new_fluid_synth(settings);
+    markDrumChannel(synth, kDrumChannel);
 
     if (soundFontLoaded && soundFontPath.isNotEmpty())
     {
@@ -53,8 +75,9 @@ void GMSynthProcessor::createSynth(double sampleRate)
         soundFontLoaded = (soundFontId != -1);
         if (soundFontLoaded)
         {
+            markDrumChannel(synth, kDrumChannel);
             for (int i = 0; i < kMaxChannels; ++i)
-                fluid_synth_program_change(synth, i, channels[i].program);
+                selectProgram(synth, i, channels[i].program);
             applyChannelMix();
         }
         else
@@ -113,8 +136,9 @@ bool GMSynthProcessor::loadSoundFont (const juce::String& filePath)
     soundFontLoaded = true;
     soundFontPath = filePath;
 
+    markDrumChannel(synth, kDrumChannel);
     for (int i = 0; i < kMaxChannels; ++i)
-        fluid_synth_program_change (synth, i, channels[i].program);
+        selectProgram (synth, i, channels[i].program);
     applyChannelMix();
 
     std::cerr << "[SriDAW] GMSynth: SoundFont loaded OK: "
@@ -178,7 +202,7 @@ void GMSynthProcessor::setChannelProgram (int channel, int program)
     {
         channels[channel].program = program;
         if (synth != nullptr)
-            fluid_synth_program_change (synth, channel, program);
+            selectProgram (synth, channel, program);
     }
 }
 
@@ -262,7 +286,7 @@ void GMSynthProcessor::sendMidiToSynth (const juce::MidiBuffer& midiMessages)
         else if (message.isController())
             fluid_synth_cc (synth, ch, message.getControllerNumber(), message.getControllerValue());
         else if (message.isProgramChange())
-            fluid_synth_program_change (synth, ch, message.getProgramChangeNumber());
+            selectProgram (synth, ch, message.getProgramChangeNumber());
         else if (message.isChannelPressure())
             fluid_synth_channel_pressure (synth, ch, message.getChannelPressureValue());
     }

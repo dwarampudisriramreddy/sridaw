@@ -32,4 +32,6 @@ class AudioEngineBridge {
   void playPreviewNote(int channel, int noteNumber, double velocity) {}
   void setLoopDuration(double loopSeconds) {}
   double getPlayheadTime() => 0.0;
+  void allSoundsOff() {}
+  void setPlayheadTime(double seconds) {}
 }

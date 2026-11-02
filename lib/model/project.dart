@@ -100,31 +100,13 @@ class Project {
     return null;
   }
 
-  /// A tiny demo song so the roll is not empty on first launch.
+  /// The starting project: a clean 4-bar song with a single empty track.
+  /// Nothing is pre-written — the notes are the user's, and the sound is
+  /// chosen with the toolbar instrument chip, `:inst` or the browser.
   static Project demo() {
     final p = Project(name: 'Demo', totalBars: 4);
-    final lead = p.tracks.first;
-    lead.name = 'Lead';
-    lead.instrument = 80;
-    lead.colorIndex = 5;
-    lead.notes = [
-      Note(pitch: 60, start: 0, len: 4, vel: 100),
-      Note(pitch: 64, start: 4, len: 4, vel: 90),
-      Note(pitch: 67, start: 8, len: 4, vel: 110),
-      Note(pitch: 72, start: 12, len: 4, vel: 120),
-      Note(pitch: 67, start: 20, len: 2, vel: 80),
-      Note(pitch: 64, start: 24, len: 8, vel: 95),
-    ];
-    p.tracks.add(Track(
-      name: 'Bass',
-      instrument: 32,
-      colorIndex: 6,
-      channel: 1,
-      notes: [
-        Note(pitch: 36, start: 0, len: 8, vel: 100),
-        Note(pitch: 43, start: 16, len: 8, vel: 100),
-      ],
-    ));
+    p.tracks.first.instrument = 0;
+    p.tracks.first.colorIndex = 5;
     return p;
   }
 }

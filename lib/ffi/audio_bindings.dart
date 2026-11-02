@@ -64,6 +64,12 @@ typedef _SetLoopDurationDart = void Function(double loopSeconds);
 typedef _GetPlayheadTimeC = ffi.Double Function();
 typedef _GetPlayheadTimeDart = double Function();
 
+typedef _SetPlayheadTimeC = ffi.Void Function(ffi.Double seconds);
+typedef _SetPlayheadTimeDart = void Function(double seconds);
+
+typedef _AllSoundsOffC = ffi.Void Function();
+typedef _AllSoundsOffDart = void Function();
+
 class AudioEngineBridge {
   late final ffi.DynamicLibrary _lib;
   
@@ -89,16 +95,48 @@ class AudioEngineBridge {
   late final _PlayPreviewNoteDart _playPreviewNote;
   late final _SetLoopDurationDart _setLoopDuration;
   late final _GetPlayheadTimeDart _getPlayheadTime;
+  _SetPlayheadTimeDart? _setPlayheadTime;
+  _AllSoundsOffDart? _allSoundsOff;
 
-  AudioEngineBridge() {    if (Platform.isAndroid || Platform.isLinux) {
-      _lib = ffi.DynamicLibrary.open('libsridaw_juce.so');
-    } else if (Platform.isWindows) {
-      _lib = ffi.DynamicLibrary.open('sridaw_juce.dll');
-    } else if (Platform.isMacOS || Platform.isIOS) {
-      _lib = ffi.DynamicLibrary.open('libsridaw_juce.dylib');
-    } else {
-      throw UnsupportedError('Unsupported platform');
+  /// Resolve the native bridge library.
+  ///
+  /// On Android the APK already did `System.loadLibrary`, so the plain soname
+  /// resolves to the loaded copy. On desktops `dlopen` does not search the
+  /// working directory, so a freshly built library has to be named with a
+  /// path — try the usual build outputs before giving up.
+  static ffi.DynamicLibrary _openLibrary() {
+    // Never start the native engine inside `flutter test`: the harness would
+    // open an audio device and load a 32 MB SoundFont in the test process.
+    if (Platform.executable.contains('flutter_tester')) {
+      throw UnsupportedError('audio engine disabled under flutter test');
     }
+    final candidates = <String>[
+      if (Platform.isAndroid || Platform.isLinux) ...[
+        'libsridaw_juce.so',
+        './libsridaw_juce.so',
+        'cpp/build/libsridaw_juce.so',
+        'cppbuild/libsridaw_juce.so',
+      ],
+      if (Platform.isWindows) ...['sridaw_juce.dll', r'.\build\sridaw_juce.dll'],
+      if (Platform.isMacOS || Platform.isIOS) ...[
+        'libsridaw_juce.dylib',
+        './libsridaw_juce.dylib',
+      ],
+    ];
+    if (candidates.isEmpty) throw UnsupportedError('Unsupported platform');
+    Object? lastError;
+    for (final path in candidates) {
+      try {
+        return ffi.DynamicLibrary.open(path);
+      } catch (e) {
+        lastError ??= e;
+      }
+    }
+    throw UnsupportedError(
+        'audio engine library not found (tried ${candidates.join(', ')}): $lastError');
+  }
+  AudioEngineBridge() {
+    _lib = _openLibrary();
 
     _initEngine = _lib.lookupFunction<_InitJuceEngineC, _InitJuceEngineDart>('initJuceEngine');
     _shutdownEngine = _lib.lookupFunction<_ShutdownJuceEngineC, _ShutdownJuceEngineDart>('shutdownJuceEngine');
@@ -137,6 +175,16 @@ class AudioEngineBridge {
     _playPreviewNote = _lib.lookupFunction<_PlayPreviewNoteC, _PlayPreviewNoteDart>('playPreviewNote');
     _setLoopDuration = _lib.lookupFunction<_SetLoopDurationC, _SetLoopDurationDart>('setLoopDuration');
     _getPlayheadTime = _lib.lookupFunction<_GetPlayheadTimeC, _GetPlayheadTimeDart>('getPlayheadTime');
+    try {
+      _setPlayheadTime = _lib.lookupFunction<_SetPlayheadTimeC, _SetPlayheadTimeDart>('setPlayheadTime');
+    } catch (_) {
+      _setPlayheadTime = null;
+    }
+    try {
+      _allSoundsOff = _lib.lookupFunction<_AllSoundsOffC, _AllSoundsOffDart>('allSoundsOff');
+    } catch (_) {
+      _allSoundsOff = null;
+    }
   }
 
   bool initialize() => _initEngine();
@@ -202,4 +250,8 @@ class AudioEngineBridge {
   }
   
   double getPlayheadTime() => _getPlayheadTime();
+
+  void setPlayheadTime(double seconds) => _setPlayheadTime?.call(seconds);
+
+  void allSoundsOff() => _allSoundsOff?.call();
 }

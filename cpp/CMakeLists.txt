@@ -107,6 +107,11 @@ target_include_directories(sridaw_juce PRIVATE src)
 target_compile_definitions(sridaw_juce PRIVATE 
     JUCE_PLUGINHOST_VST3=1 
     JUCE_PLUGINHOST_AU=1
+    # The bridge never downloads anything (no juce::URL use) and never embeds
+    # a web view; disabling both keeps JUCE from demanding libcurl, GTK and
+    # WebKit headers on the build machine.
+    JUCE_USE_CURL=0
+    JUCE_WEB_BROWSER=0
 )
 
 # Ensure C++17 or C++20 for modern JUCE

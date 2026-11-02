@@ -3,6 +3,9 @@ library;
 
 import 'project.dart';
 
+/// GM channel 10 — 0-based index 9 — where the SoundFont keeps percussion.
+const int drumMidiChannel = 9;
+
 class DrumInfo {
   final int note;
   final String name;

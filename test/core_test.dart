@@ -47,11 +47,12 @@ void main() {
   });
 
   group('project', () {
-    test('demo project has bars, notes and ghost notes', () {
+    test('demo project has bars and an empty first track', () {
       final p = Project.demo();
       expect(p.totalSteps, p.stepsPerBar * p.totalBars);
-      expect(p.track.notes, isNotEmpty);
-      expect(p.ghostNotes, isNotEmpty);
+      expect(p.track.notes, isEmpty);
+      expect(p.track.instrument, 0);
+      expect(p.ghostNotes, isEmpty);
     });
 
     test('noteAt finds a note under the cursor', () {

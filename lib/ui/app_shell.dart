@@ -19,6 +19,7 @@ import '../render/arrangement_view.dart';
 import '../render/automation_view.dart';
 import '../render/browser_view.dart';
 import '../render/drum_machine_view.dart';
+import '../render/instrument_picker.dart';
 import '../render/mixer_view.dart';
 import '../render/piano_roll_view.dart';
 import '../render/roll_layout.dart';
@@ -139,6 +140,12 @@ class _AppShellState extends State<AppShell> {
   int _playCol = 0;
   Timer? _playTimer;
 
+  /// Cold-start retries: on phones the audio device (and the SoundFont
+  /// extraction behind it) is often not ready on the first attempt, so keep
+  /// trying quietly instead of leaving the app permanently silent.
+  int _audioAttempts = 0;
+  Timer? _audioRetryTimer;
+
   String _status = '';
   bool _statusError = false;
   String _commandBuffer = '';
@@ -205,13 +212,27 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _initAudio() async {
-    final ok = await _audio.init();
+    await _audio.init();
     if (!mounted) return;
+    _audioAttempts++;
+    final healthy = _audio.soundFontLoaded;
+    final willRetry = !healthy && _audioAttempts < 6;
+    if (willRetry) {
+      _audioRetryTimer?.cancel();
+      _audioRetryTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) _initAudio();
+      });
+    }
     setState(() {
-      _status = ok
-          ? 'audio engine ready'
-          : 'audio engine unavailable (build cpp/ to enable sound)';
-      _statusError = !ok;
+      // Only touch the status line while it still carries an audio message,
+      // so retries never clobber whatever the user is doing.
+      if (_status.isEmpty || _status.startsWith('audio')) {
+        _status = healthy
+            ? _audio.describe()
+            : '${_audio.describe()}${willRetry ? ' · retrying' : ''}';
+        _statusError = !healthy;
+      }
+      _revision++;
     });
   }
 
@@ -221,6 +242,7 @@ class _AppShellState extends State<AppShell> {
     _playTimer?.cancel();
     _showCmdTimer?.cancel();
     _rollTapTimer?.cancel();
+    _audioRetryTimer?.cancel();
     _audio.shutdown();
     super.dispose();
   }
@@ -244,7 +266,7 @@ class _AppShellState extends State<AppShell> {
     _canvasW = availW.floor();
     _canvasH = math.max(
       RollLayout.rulerH + RollLayout.cellH * 4,
-      (availH - DawLayout.chromeH).floor(),
+      availH.floor(),
     );
   }
 
@@ -765,7 +787,7 @@ class _AppShellState extends State<AppShell> {
       _statusError = false;
       _revision++;
     });
-    _audio.previewNote(_pointer.pitch, velocity: 110, channel: 9);
+    _audio.previewNote(_pointer.pitch, velocity: 110, channel: drumMidiChannel);
   }
 
   /// First hit on the machine turns the active track into a GM drum track so
@@ -774,7 +796,7 @@ class _AppShellState extends State<AppShell> {
   bool _ensureDrumTrack() {
     if (isDrumTrack(_project.track)) return false;
     _project.track.type = TrackType.drum;
-    _project.track.channel = 9;
+    _project.track.channel = drumMidiChannel;
     return true;
   }
 
@@ -815,7 +837,7 @@ class _AppShellState extends State<AppShell> {
       _statusError = false;
       _revision++;
     });
-    _audio.previewNote(pad.pitch, velocity: 110, channel: 9);
+    _audio.previewNote(pad.pitch, velocity: 110, channel: drumMidiChannel);
   }
 
   void _drumEraseCell(int padIndex, int col) {
@@ -858,7 +880,7 @@ class _AppShellState extends State<AppShell> {
       _statusError = false;
       _revision++;
     });
-    _audio.previewNote(pad.pitch, velocity: 110, channel: 9);
+    _audio.previewNote(pad.pitch, velocity: 110, channel: drumMidiChannel);
   }
 
   void _onDrumPadRemove(int padIndex) {
@@ -893,7 +915,7 @@ class _AppShellState extends State<AppShell> {
       _statusError = false;
       _revision++;
     });
-    _audio.previewNote(pad.pitch, velocity: 110, channel: 9);
+    _audio.previewNote(pad.pitch, velocity: 110, channel: drumMidiChannel);
   }
 
   void _openDrumPicker() {
@@ -1049,7 +1071,7 @@ class _AppShellState extends State<AppShell> {
       _statusError = false;
       _revision++;
     });
-    _audio.previewNote(pad.pitch, velocity: 110, channel: 9);
+    _audio.previewNote(pad.pitch, velocity: 110, channel: drumMidiChannel);
   }
 
   void _onDrumPanEnd(Offset local) {
@@ -1543,7 +1565,7 @@ class _AppShellState extends State<AppShell> {
       _pointer.col = nCol;
       _revision++;
     });
-    _audio.previewNote(nPitch, velocity: 90);
+    _audio.previewNote(nPitch, velocity: 90, channel: _previewChannel);
     _ensureVisible();
   }
 
@@ -1649,7 +1671,7 @@ class _AppShellState extends State<AppShell> {
       _revision++;
     });
     final drums = _view == ViewMode.drumMachine || isDrumTrack(_project.track);
-    _audio.previewNote(_pointer.pitch, velocity: 90, channel: drums ? 9 : 0);
+    _audio.previewNote(_pointer.pitch, velocity: 90, channel: drums ? drumMidiChannel : _previewChannel);
     _ensureVisible();
   }
 
@@ -2003,10 +2025,21 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
+  /// Seconds one piano-roll step lasts at the project tempo.
+  double get _secPerStep => 60.0 / _project.bpm / _project.stepsPerBeat;
+
+  /// Channel a note preview plays on: GM channel 10 whenever the drum view or
+  /// a drum track is active, otherwise the active track's own channel.
+  int get _previewChannel =>
+      (_view == ViewMode.drumMachine || isDrumTrack(_project.track))
+          ? drumMidiChannel
+          : _project.track.channel;
+
   void _play() {
     _playTimer?.cancel();
     _pausedAt = null;
-    final stepMs = (60000 / _project.bpm / _project.stepsPerBeat).round();
+    final scheduled = _scheduleSequence();
+    final stepMs = (_secPerStep * 1000).round();
     _playTimer = Timer.periodic(Duration(milliseconds: math.max(10, stepMs)), (_) {
       if (!mounted) return;
       setState(() {
@@ -2014,25 +2047,56 @@ class _AppShellState extends State<AppShell> {
         _revision++;
       });
     });
-    if (_audio.available) {
-      _audio.playDemo(true);
-      _audio.setLoopDuration(_project.totalSteps /
-          (_project.bpm / 60.0 * _project.stepsPerBeat / 16.0));
-    }
     setState(() {
       _playing = true;
-      _status = 'PLAYING';
+      // Spell out what went into the engine: "no notes yet" is the honest
+      // answer for a silent start, and it is visible without a debugger.
+      _status = scheduled == 0
+          ? 'PLAYING · no notes yet'
+          : 'PLAYING · $scheduled note(s)';
       _statusError = false;
       _revision++;
     });
   }
 
+  /// Push every track's notes into the engine as one looping sequence and
+  /// start it at the visual playhead. The transport used to move the playhead
+  /// without ever scheduling a note, so playback (drums included) was silent.
+  /// Returns how many notes were scheduled.
+  int _scheduleSequence() {
+    final step = _secPerStep;
+    var scheduled = 0;
+    // Restarting while notes ring would leave them held forever: the old
+    // sequence (and its note-offs) is about to disappear.
+    _audio.allSoundsOff();
+    _audio.clearMidiSequence();
+    for (final track in _project.tracks) {
+      // Percussion lives on GM channel 10; a program change there would
+      // re-select a drum kit, so melodic tracks only get one.
+      if (track.channel != drumMidiChannel) {
+        _audio.setTrackInstrument(track.channel, track.instrument);
+      }
+      for (final n in track.notes) {
+        _audio.addMidiNote(
+          n.pitch,
+          start: n.start * step,
+          duration: n.len * step,
+          velocity: n.vel / 127.0,
+          channel: track.channel,
+        );
+        scheduled++;
+      }
+    }
+    _audio.setLoopDuration(_project.totalSteps * step);
+    _audio.setPlayheadTime(_playCol * step);
+    _audio.playDemo(true);
+    return scheduled;
+  }
+
   void _pause() {
     _playTimer?.cancel();
     _pausedAt = DateTime.now();
-    if (_audio.available) {
-      _audio.playDemo(false);
-    }
+    _audio.playDemo(false);
     setState(() {
       _playing = false;
       _status = 'PAUSED';
@@ -2043,9 +2107,8 @@ class _AppShellState extends State<AppShell> {
 
   void _stop() {
     _playTimer?.cancel();
-    if (_audio.available) {
-      _audio.playDemo(false);
-    }
+    _audio.playDemo(false);
+    _audio.setPlayheadTime(0);
     setState(() {
       _playing = false;
       _playCol = 0;
@@ -2328,7 +2391,8 @@ class _AppShellState extends State<AppShell> {
       _statusError = created.isEmpty;
       _revision++;
     });
-    _audio.previewNote(roots.first.pitch, velocity: 100);
+    _audio.previewNote(roots.first.pitch,
+        velocity: 100, channel: _project.track.channel);
   }
 
   // -------------------------------------------------------- theory commands
@@ -2534,10 +2598,44 @@ class _AppShellState extends State<AppShell> {
       _statusError = true;
       return;
     }
-    _project.track.instrument = hit.program;
-    _audio.setTrackInstrument(_project.activeTrack, hit.program);
-    _status = 'inst ${hit.name} (program ${hit.program + 1})';
-    _statusError = false;
+    _applyInstrument(hit);
+  }
+
+  /// Load [hit] onto the active track: remember it, push the program to the
+  /// engine channel the track plays on, and let the user hear it immediately.
+  void _applyInstrument(GmInstrument hit) {
+    final drum = _project.track.channel == drumMidiChannel;
+    setState(() {
+      _project.track.instrument = hit.program;
+      if (!drum) {
+        _audio.setTrackInstrument(_project.track.channel, hit.program);
+      }
+      _status = 'inst ${hit.name} (program ${hit.program + 1})'
+          '${drum ? ' · drum track keeps the GM kit' : ''}';
+      _statusError = false;
+      _revision++;
+    });
+    _audio.previewNote(_pointer.pitch,
+        velocity: 100, channel: _project.track.channel);
+  }
+
+  /// Toolbar chip -> tap-to-load General MIDI picker.
+  void _openInstrumentPicker() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(18),
+        child: InstrumentPicker(
+          activeProgram: _project.track.instrument,
+          accent: _accent.accent,
+          onSelected: (hit) {
+            Navigator.of(ctx).pop();
+            _applyInstrument(hit);
+          },
+        ),
+      ),
+    );
   }
 
   /// Notes a resize acts on: the grab, else the selection, else the note under
@@ -2762,7 +2860,8 @@ class _AppShellState extends State<AppShell> {
       _statusError = false;
       _revision++;
     });
-    _audio.previewNote(cell.pitch, velocity: 90);
+    _audio.previewNote(cell.pitch,
+        velocity: 90, channel: _project.track.channel);
     _ensureVisible();
   }
 
@@ -3037,12 +3136,12 @@ class _AppShellState extends State<AppShell> {
             child: Padding(
               // Keep the whole UI inside the safe area and lift it above the soft
               // keyboard, so the extra-keys row sits on the keyboard's top edge.
-              padding: EdgeInsets.only(
-                top: safe.top,
-                bottom: insets.bottom,
-                left: safe.left,
-                right: safe.right,
-              ),
+               padding: EdgeInsets.only(
+                 top: math.max(0.0, safe.top),
+                 bottom: math.max(0.0, insets.bottom),
+                 left: math.max(0.0, safe.left),
+                 right: math.max(0.0, safe.right),
+               ),
               child: Column(
                 children: [
                   _buildToolbar(),
@@ -3236,6 +3335,7 @@ class _AppShellState extends State<AppShell> {
                 ('drag the gutter / ruler', 'scroll pitches / time'),
                 ('mouse wheel / trackpad', 'scroll the roll'),
                 ('arrangement: tap / double-tap', 'select · open the clip in the roll'),
+                ('instrument chip', 'tap the toolbar chip, then tap a sound to load'),
                 ('drums: tap a cell', 'place a hit · drag across to paint a run'),
                 ('drums: long-press a hit', 'erase it · tap the pad name to preview'),
                 ('drums: + SOUND', 'add kick, snare … from the GM kit'),
@@ -3283,7 +3383,7 @@ class _AppShellState extends State<AppShell> {
                 ('TAB / the tab bar', 'cycle views'),
               ], keyW),
               _helpSection('TRANSPORT + COMMANDS', [
-                ('Space / Enter', 'play · press again quickly to restart'),
+                ('Space / Enter', 'play — pushes the notes to the engine · again quickly: restart'),
                 ('.', 'stop'),
                 (':', 'command line (Esc leaves it)'),
                 (':scale D Minor', 'set the project key'),
@@ -3357,10 +3457,18 @@ class _AppShellState extends State<AppShell> {
               style: DawFonts.display(size: 13, spacing: 2.4)),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              '${_project.name} · ${_project.track.name}',
-              overflow: TextOverflow.ellipsis,
-              style: DawFonts.body(size: 11, color: DawColors.textFaint),
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    '${_project.name} · ${_project.track.name}',
+                    overflow: TextOverflow.ellipsis,
+                    style: DawFonts.body(size: 11, color: DawColors.textFaint),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(child: _instrumentChip()),
+              ],
             ),
           ),
           Text(
@@ -3378,6 +3486,40 @@ class _AppShellState extends State<AppShell> {
             active: _playing,
           ),
         ],
+      ),
+    );
+  }
+
+  /// Tap target for the loaded GM program: opens the instrument picker so a
+  /// touch user can change sound without the command line or the browser.
+  Widget _instrumentChip() {
+    final drum = _project.track.channel == drumMidiChannel;
+    return GestureDetector(
+      key: const Key('instrument-chip'),
+      onTap: _openInstrumentPicker,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: DawColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: DawColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                drum ? 'GM kit' : gmProgramName(_project.track.instrument),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: DawFonts.mono(size: 10, color: DawColors.text),
+              ),
+            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.arrow_drop_down,
+                size: 16, color: DawColors.textFaint),
+          ],
+        ),
       ),
     );
   }

@@ -41,6 +41,7 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     HardwareKeyboard.instance.addHandler(_handleHardwareKey);
     _controller.addListener(_handleText);
     _focus.addListener(_handleFocusChange);
+    FocusManager.instance.addListener(_handleAnyFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) => _refocus());
   }
 
@@ -48,6 +49,7 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKey);
+    FocusManager.instance.removeListener(_handleAnyFocusChange);
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -62,7 +64,7 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
 
   void _refocus() {
     if (!mounted) return;
-    if (!_focus.hasFocus) {
+    if (!_focus.hasFocus && !_textInputsOwnFocus()) {
       _focus.requestFocus();
     }
     // On mobile, focusing programmatically does not always pop the IME up
@@ -79,7 +81,39 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     }
   }
 
-  bool _handleHardwareKey(KeyEvent event) => widget.onKey(event);
+  /// Fires for every focus move in the app — including the moment a dialog
+  /// field takes focus and the later moment it goes away. The sink must
+  /// reclaim focus in the second case, and stay out of the way in the first.
+  void _handleAnyFocusChange() {
+    if (!mounted || _focus.hasFocus || _textInputsOwnFocus()) return;
+    scheduleMicrotask(_refocus);
+  }
+
+  /// True while a real text field (the instrument filter, mixer entry, …)
+  /// holds focus instead of this invisible sink.
+  bool _textInputsOwnFocus() {
+    final node = FocusManager.instance.primaryFocus;
+    if (node == null || node == _focus) return false;
+    final ctx = node.context;
+    if (ctx == null) return false;
+    if (ctx.widget is EditableText) return true;
+    var found = false;
+    ctx.visitAncestorElements((element) {
+      if (element.widget is EditableText) {
+        found = true;
+        return false;
+      }
+      return true;
+    });
+    return found;
+  }
+
+  bool _handleHardwareKey(KeyEvent event) {
+    // While a real text field owns focus its characters belong to it, not to
+    // the vim keymap.
+    if (_textInputsOwnFocus()) return false;
+    return widget.onKey(event);
+  }
 
   void _handleText() {
     if (_suppressText) return;

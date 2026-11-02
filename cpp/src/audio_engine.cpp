@@ -1,4 +1,5 @@
 #include "audio_engine.h"
+#include <cmath>
 #include "gm_synth_processor.h"
 #include <iostream>
 
@@ -53,6 +54,29 @@ bool AudioEngine::initialize() {
     }
     
     deviceManager->addAudioCallback(this);
+
+    // Android loads its bundled GeneralUser SoundFont through the Flutter
+    // asset channel (a few ms after init); on desktop nothing does that, so
+    // pick up a repo/system copy here or every dev build renders silence.
+    if (!isSoundFontLoaded()) {
+        const juce::String candidates[] = {
+            juce::String("GeneralUser-GS.sf2"),
+            juce::String("android/app/src/main/assets/soundfonts/GeneralUser-GS.sf2"),
+            juce::String("/usr/share/soundfonts/GeneralUser-GS.sf2"),
+            juce::String("/usr/share/soundfonts/FluidR3_GM.sf2"),
+            juce::String("/usr/share/sounds/sf2/FluidR3_GM.sf2"),
+        };
+        const juce::File cwd = juce::File::getCurrentWorkingDirectory();
+        for (const auto& candidate : candidates) {
+            const juce::File f = juce::File::isAbsolutePath(candidate)
+                ? juce::File(candidate)
+                : cwd.getChildFile(candidate);
+            if (f.existsAsFile()) {
+                loadSoundFont(f.getFullPathName());
+                break;
+            }
+        }
+    }
     return true;
 }
 
@@ -139,8 +163,9 @@ void AudioEngine::playDemo(bool play) {
     isPlaying = play;
     
     if (play) {
-        currentPlayheadTime = 0.0;
-        
+        // The Dart transport owns the playhead position (it calls
+        // setPlayheadTime so a resume continues where the visual playhead
+        // stopped), so do not rewind here.
         if (!currentMidiSequence) {
             currentMidiSequence = std::make_unique<juce::MidiMessageSequence>();
             currentMidiSequence->addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0.0);
@@ -151,7 +176,19 @@ void AudioEngine::playDemo(bool play) {
             currentMidiSequence->addEvent(juce::MidiMessage::noteOff(1, 67), 1.0);
             currentMidiSequence->updateMatchedPairs();
         }
+    } else {
+        // Notes still scheduled past the stop point would never be dispatched
+        // again, so release everything that is currently ringing.
+        allSoundsOff();
     }
+}
+
+void AudioEngine::setPlayheadTime(double seconds) {
+    currentPlayheadTime = juce::jmax(0.0, seconds);
+}
+
+void AudioEngine::allSoundsOff() {
+    if (gmSynthProcessor) gmSynthProcessor->allSoundsOff();
 }
 
 bool AudioEngine::loadMidiFile(const juce::String& filePath) {
@@ -310,22 +347,37 @@ void AudioEngine::audioDeviceIOCallbackWithContext(const float* const* inputChan
     
     juce::MidiBuffer midiBuffer;
     
-    if (isPlaying && currentMidiSequence) {
+    if (isPlaying && currentMidiSequence && loopDuration > 0.0) {
         double blockStartTime = currentPlayheadTime;
-        double blockEndTime = blockStartTime + (numSamples / sampleRate);
-        
-        for (int i = 0; i < currentMidiSequence->getNumEvents(); ++i) {
-            auto* evt = currentMidiSequence->getEventPointer(i);
-            if (evt->message.getTimeStamp() >= blockStartTime && evt->message.getTimeStamp() < blockEndTime) {
-                int samplePos = static_cast<int>((evt->message.getTimeStamp() - blockStartTime) * sampleRate);
-                midiBuffer.addEvent(evt->message, samplePos);
+        if (blockStartTime >= loopDuration)
+            blockStartTime = std::fmod(blockStartTime, loopDuration);
+        const double blockEndTime = blockStartTime + (numSamples / sampleRate);
+
+        // Dispatch the events of [from, to) with sample offsets relative to
+        // [blockBase, blockBase + numSamples/sampleRate).
+        auto dispatch = [&](double from, double to, double blockBase) {
+            for (int i = 0; i < currentMidiSequence->getNumEvents(); ++i) {
+                auto* evt = currentMidiSequence->getEventPointer(i);
+                const double t = evt->message.getTimeStamp();
+                if (t >= from && t < to) {
+                    const int samplePos =
+                        static_cast<int>((t - blockBase) * sampleRate);
+                    midiBuffer.addEvent(evt->message, samplePos);
+                }
             }
-        }
-        
-        currentPlayheadTime = blockEndTime;
-        
-        if (currentPlayheadTime > loopDuration) {
-            currentPlayheadTime = 0.0;
+        };
+
+        if (blockEndTime <= loopDuration) {
+            dispatch(blockStartTime, blockEndTime, blockStartTime);
+            currentPlayheadTime = blockEndTime;
+        } else {
+            // The block crosses the loop point: play up to the bar end, then
+            // the wrapped head of the next pass. Dropping the tail here would
+            // silently swallow the last hit of every loop.
+            dispatch(blockStartTime, loopDuration, blockStartTime);
+            const double remainder = blockEndTime - loopDuration;
+            dispatch(0.0, remainder, 0.0);
+            currentPlayheadTime = remainder;
         }
     }
     

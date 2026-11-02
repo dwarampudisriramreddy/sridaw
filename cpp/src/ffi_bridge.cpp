@@ -83,6 +83,14 @@ FFI_EXPORT void playDemo(bool play) {
     if (gAudioEngine) gAudioEngine->playDemo(play);
 }
 
+FFI_EXPORT void setPlayheadTime(double seconds) {
+    if (gAudioEngine) gAudioEngine->setPlayheadTime(seconds);
+}
+
+FFI_EXPORT void allSoundsOff() {
+    if (gAudioEngine) gAudioEngine->allSoundsOff();
+}
+
 FFI_EXPORT bool loadMidiFile(const char* path) {
     if (gAudioEngine && path) {
         return gAudioEngine->loadMidiFile(juce::String(path));

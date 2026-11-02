@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -55,7 +57,23 @@ class DawAudioEngine {
     }
   }
 
+  /// One-line health report for the status bar: an engine without a loaded
+  /// SoundFont renders digital silence, which is worth saying out loud.
+  String describe() {
+    if (!_available) {
+      return 'audio engine unavailable (build cpp/ to enable sound)';
+    }
+    if (!soundFontLoaded) {
+      return 'audio engine ready, but no SoundFont is loaded - silent';
+    }
+    return 'audio engine ready';
+  }
+
   void shutdown() {
+    for (final t in _previewTimers.values) {
+      t.cancel();
+    }
+    _previewTimers.clear();
     try {
       _bridge?.shutdown();
     } catch (_) {}
@@ -83,9 +101,60 @@ class DawAudioEngine {
 
   /// Fire-and-forget preview note used whenever the pointer moves onto a pitch
   /// or a note is drawn. Target is < 20 ms pointer-to-sound on mobile.
+  ///
+  /// Every preview is released after a short blip (a pointer-driven DAW never
+  /// holds a note down), otherwise FluidSynth keeps the voice ringing and a
+  /// handful of taps ends in a wall of stuck notes.
+  final Map<String, Timer> _previewTimers = {};
+
   void previewNote(int pitch, {int velocity = 100, int channel = 0}) {
     try {
       _bridge?.playPreviewNote(channel, pitch, velocity.clamp(1, 127) / 127.0);
+    } catch (_) {}
+    final key = '$channel:$pitch';
+    _previewTimers[key]?.cancel();
+    _previewTimers[key] = Timer(const Duration(milliseconds: 170), () {
+      _previewTimers.remove(key);
+      try {
+        _bridge?.playPreviewNote(channel, pitch, 0);
+      } catch (_) {}
+    });
+  }
+
+  /// Rewrite the scheduled sequence that the engine plays while the transport
+  /// runs. [start]/[duration] are seconds from the loop point.
+  void clearMidiSequence() {
+    try {
+      _bridge?.clearMidiSequence();
+    } catch (_) {}
+  }
+
+  void addMidiNote(int pitch,
+      {required double start,
+      required double duration,
+      double velocity = 1.0,
+      int channel = 0}) {
+    try {
+      _bridge?.addMidiNote(channel, pitch, start, duration, velocity);
+    } catch (_) {}
+  }
+
+  /// Release everything that is ringing (pause/stop, view switches).
+  void allSoundsOff() {
+    for (final t in _previewTimers.values) {
+      t.cancel();
+    }
+    _previewTimers.clear();
+    try {
+      _bridge?.allSoundsOff();
+    } catch (_) {}
+  }
+
+  /// Move the engine playhead so a resume continues where the visual
+  /// playhead stopped instead of restarting the loop.
+  void setPlayheadTime(double seconds) {
+    try {
+      _bridge?.setPlayheadTime(seconds);
     } catch (_) {}
   }
 

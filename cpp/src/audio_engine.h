@@ -44,6 +44,8 @@ public:
     double getPlayheadTime() const { return currentPlayheadTime; }
     
     void playDemo(bool play);
+    void setPlayheadTime(double seconds);
+    void allSoundsOff();
 
     bool loadMidiFile(const juce::String& filePath);
     bool loadSoundFont(const juce::String& filePath);

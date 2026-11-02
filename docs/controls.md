@@ -131,8 +131,29 @@ single `d` produces one block chord per bar. Use `|` before a spaced pattern:
 
 | Keys | Action |
 | --- | --- |
-| `Enter` | play / pause |
+| `Enter` / `Space` | play / pause |
 | `.` or `Esc` on the transport | stop |
+
+Play pushes every track's notes into the audio engine as one loop at the
+project tempo and starts it at the playhead, so playback is actually audible —
+drum-machine hits included (they go to GM channel 10). The status line reports
+what went in: `PLAYING · 12 note(s)`, or `PLAYING · no notes yet` when nothing
+has been written. Pause and stop release anything still ringing.
+
+## Instrument
+
+Each track plays one General MIDI program:
+
+| Where | Action |
+| --- | --- |
+| toolbar chip, next to the track name | tap it to open the instrument list, filter by name or number, tap a row to load it |
+| `:inst <name-or-number>` | e.g. `:inst piano`, `:inst 118`; `:inst` alone reports the current sound |
+| Sample view (`Ctrl+5`) | `j`/`k` pick a program, `i` loads it onto the active track |
+
+Loading an instrument previews it on the cursor pitch, so the choice is
+audible immediately. A drum track keeps the GM percussion kit no matter what
+is selected here. The project starts empty on `Track 1` (Acoustic Grand
+Piano) — there is no demo song to delete first.
 
 ## Views
 
@@ -173,6 +194,7 @@ Press `:` and type a command, then `Enter`:
 | `:pal <name>` / `:theme <name>` | set the accent theme (`mono`, `slate`, `sand`, `moss`, `rose`) |
 | `:bpm <n>` | set tempo (20–300) |
 | `:len <n>` | default note length when drawing (1–64) |
+| `:inst <name\|#>` | load a GM instrument onto the active track (see [Instrument](#instrument)) |
 | `:ghost on|off` | show/hide ghost notes |
 | `:crt on|off` | toggle the CRT overlay |
 | `:scale <root> <name>` | set the project key, e.g. `:scale D Minor` (notes then label as scale degrees `1`…`7`) |
@@ -191,8 +213,9 @@ An always-on soft keyboard feeds characters through the same keymap, so
 Sticky modifiers highlight when active.
 
 Everything you can reach with the keyboard is also tappable: the tabs switch
-views, the toolbar starts/stops playback, mixer faders and toggles respond to
-touch, and the drum machine lays hits down under a finger (tap to toggle,
+views, the toolbar starts/stops playback, the instrument chip (next to the
+track name) opens the tap-to-load sound list, mixer faders and toggles respond
+to touch, and the drum machine lays hits down under a finger (tap to toggle,
 drag to paint a run).
 
 In the piano roll, tap to place the cursor, double-tap an empty cell to add a

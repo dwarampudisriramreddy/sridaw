@@ -1,10 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:sridaw/input/daw_input.dart';
 import 'package:sridaw/main.dart';
+import 'package:sridaw/model/project.dart';
 import 'package:sridaw/render/arrangement_view.dart';
 import 'package:sridaw/render/automation_view.dart';
 import 'package:sridaw/render/browser_view.dart';
@@ -102,7 +103,7 @@ void main() {
     PianoRollPainter painter() =>
         tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
 
-    // Step off the demo note (pitch 60, col 0) onto an empty pitch.
+    // Move off the home row first; the grid starts empty.
     await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
     await tester.pump();
 
@@ -306,7 +307,7 @@ void main() {
     PianoRollPainter painter() =>
         tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
 
-    // Pointer starts on the demo C4 (pitch 60, start 0).
+    // The chord is built at the cursor (C4, col 0) on the empty grid.
     await runCommand(tester, 'chord major');
     final notes = painter().scene.project.track.notes;
     expect(notes.where((n) => n.pitch == 64 && n.start == 0), hasLength(1));
@@ -386,6 +387,10 @@ void main() {
         tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
     final project = painter().scene.project;
 
+    // The demo project starts empty, so lay a chord down first.
+    await runCommand(tester, 'chord major');
+    await tester.pump();
+
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
@@ -420,7 +425,7 @@ void main() {
     PianoRollPainter painter() =>
         tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
 
-    // Step off the demo note onto empty space, then arm erase mode.
+    // Land on empty space, then arm erase mode.
     await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
     await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
     await tester.pump();
@@ -464,6 +469,11 @@ void main() {
     PianoRollPainter painter() =>
         tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
 
+    // The demo song no longer writes notes for you: put a 1/4 note on the
+    // home cell so there is something for CTRL to grab.
+    painter().scene.project.track.notes
+        .add(Note(pitch: 60, start: 0, len: 4, vel: 100));
+
     // CTRL-tap grabs the note under the cursor (C4, len 4 = 1/4 note).
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
@@ -485,6 +495,9 @@ void main() {
     PianoRollPainter painter() =>
         tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
 
+    // The grid starts empty: drop the note this test lengthens.
+    painter().scene.project.track.notes
+        .add(Note(pitch: 60, start: 0, len: 4, vel: 100));
     final before =
         painter().scene.project.noteAt(60, 0)!.len;
     await tester.sendKeyDownEvent(LogicalKeyboardKey.bracketRight,
@@ -715,7 +728,9 @@ void main() {
           l.yForPitch(pitch) + RollLayout.cellH / 2,
         );
 
-    // Demo note at C4 / step 0.
+    // The grid starts empty: drop the note this test drags.
+    final project = painter().scene.project;
+    project.track.notes.add(Note(pitch: 60, start: 0, len: 4, vel: 100));
     final note = painter().scene.project.noteAt(60, 0)!;
     final beforePitch = note.pitch;
     final beforeStart = note.start;
@@ -991,6 +1006,74 @@ void main() {
         contains('SIDE STICK'));
     expect(find.text('SIDE STICK'), findsOneWidget);
     expect(find.text('ADD SOUND'), findsNothing);
+  });
+
+  testWidgets('toolbar instrument chip opens a picker and loads a sound',
+      (tester) async {
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+    final project = painter().scene.project;
+    expect(project.track.instrument, 0);
+
+    await tester.tap(find.byKey(const Key('instrument-chip')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.text('INSTRUMENT'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'square');
+    await tester.pump();
+    final row = find.byKey(const Key('inst-80'));
+    expect(row, findsOneWidget);
+
+    await tester.tap(row);
+    await tester.pump();
+    // Let the dialog close and the preview blip expire.
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(project.track.instrument, 80);
+    expect(find.text('INSTRUMENT'), findsNothing);
+    expect(find.text('Lead 1 (square)'), findsWidgets);
+    expect(
+        find.text('inst Lead 1 (square) (program 81)'), findsOneWidget);
+  });
+
+  testWidgets('play schedules the project notes into the engine',
+      (tester) async {
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+    final project = painter().scene.project;
+
+    // An empty grid: the transport says so instead of playing silence
+    // while pretending something is running.
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(find.text('PLAYING · no notes yet'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+
+    project.track.notes
+      ..add(Note(pitch: 60, start: 0, len: 4, vel: 100))
+      ..add(Note(pitch: 64, start: 4, len: 4, vel: 100));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(find.text('PLAYING · 2 note(s)'), findsOneWidget);
+
+    // Pause so no periodic timer is left pending.
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(find.text('PAUSED'), findsOneWidget);
   });
 
   testWidgets('help view documents the touch gestures', (tester) async {
