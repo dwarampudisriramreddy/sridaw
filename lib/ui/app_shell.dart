@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart'
     show DragStartBehavior, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'icons.dart';
 
 import '../core/audio_engine.dart';
@@ -92,15 +93,45 @@ class _AppShellState extends State<AppShell> {
       ArrangementTrack(name: 'Track 8', color: const Color(0xFF2C3E50)),
     ];
     tracks[0].clips.addAll([
-      ArrangementClip(name: 'Drums A', trackIndex: 0, start: 0, length: 16, color: const Color(0xFF4A90D9)),
-      ArrangementClip(name: 'Drums B', trackIndex: 0, start: 32, length: 16, color: const Color(0xFF4A90D9).withValues(alpha: 0.7)),
-      ArrangementClip(name: 'Drums A', trackIndex: 0, start: 64, length: 16, color: const Color(0xFF4A90D9)),
+      ArrangementClip(
+        name: 'Drums A',
+        trackIndex: 0,
+        start: 0,
+        length: 16,
+        color: const Color(0xFF4A90D9),
+      ),
+      ArrangementClip(
+        name: 'Drums B',
+        trackIndex: 0,
+        start: 32,
+        length: 16,
+        color: const Color(0xFF4A90D9).withValues(alpha: 0.7),
+      ),
+      ArrangementClip(
+        name: 'Drums A',
+        trackIndex: 0,
+        start: 64,
+        length: 16,
+        color: const Color(0xFF4A90D9),
+      ),
     ]);
     tracks[1].clips.add(
-      ArrangementClip(name: 'Bass', trackIndex: 1, start: 0, length: 64, color: const Color(0xFFE67E22)),
+      ArrangementClip(
+        name: 'Bass',
+        trackIndex: 1,
+        start: 0,
+        length: 64,
+        color: const Color(0xFFE67E22),
+      ),
     );
     tracks[2].clips.add(
-      ArrangementClip(name: 'Lead', trackIndex: 2, start: 32, length: 32, color: const Color(0xFF27AE60)),
+      ArrangementClip(
+        name: 'Lead',
+        trackIndex: 2,
+        start: 32,
+        length: 32,
+        color: const Color(0xFF27AE60),
+      ),
     );
     return tracks;
   }
@@ -172,6 +203,9 @@ class _AppShellState extends State<AppShell> {
   Timer? _rollTapTimer;
   int _rollTapCount = 0;
   Offset? _lastRollTapPos;
+  Timer? _drumTapTimer;
+  int _drumTapCount = 0;
+  Offset? _lastDrumTapPos;
 
   // Finger drag of a selected note, and edge scrolling of the roll view.
   bool _dragging = false;
@@ -242,18 +276,19 @@ class _AppShellState extends State<AppShell> {
     _playTimer?.cancel();
     _showCmdTimer?.cancel();
     _rollTapTimer?.cancel();
+    _drumTapTimer?.cancel();
     _audioRetryTimer?.cancel();
     _audio.shutdown();
     super.dispose();
   }
 
   RollLayout get _layout => RollLayout(
-        viewLowPitch: _viewLowPitch,
-        viewCol: _viewCol,
-        width: _canvasW,
-        height: _canvasH,
-        gutterW: _view == ViewMode.drumMachine ? drumGutterW : RollLayout.keyW,
-      );
+    viewLowPitch: _viewLowPitch,
+    viewCol: _viewCol,
+    width: _canvasW,
+    height: _canvasH,
+    gutterW: _view == ViewMode.drumMachine ? drumGutterW : RollLayout.keyW,
+  );
 
   @override
   void didChangeDependencies() {
@@ -288,7 +323,8 @@ class _AppShellState extends State<AppShell> {
 
   bool _onKey(KeyEvent event) {
     final key = event.logicalKey;
-    final isCtrl = key == LogicalKeyboardKey.control ||
+    final isCtrl =
+        key == LogicalKeyboardKey.control ||
         key == LogicalKeyboardKey.controlLeft ||
         key == LogicalKeyboardKey.controlRight;
 
@@ -324,10 +360,8 @@ class _AppShellState extends State<AppShell> {
         return true;
       }
       if (_isModifierKey(key)) return true;
-      final shape = Keymap.chordShapeFor(
-            key,
-            HardwareKeyboard.instance.isShiftPressed,
-          ) ??
+      final shape =
+          Keymap.chordShapeFor(key, HardwareKeyboard.instance.isShiftPressed) ??
           Keymap.chordShapeForChar(event.character ?? '');
       if (shape == null) {
         // Unknown key: stay armed so the next tap can still pick a quality.
@@ -351,8 +385,10 @@ class _AppShellState extends State<AppShell> {
       } else if (key == LogicalKeyboardKey.backspace) {
         setState(() {
           if (_commandBuffer.isNotEmpty) {
-            _commandBuffer =
-                _commandBuffer.substring(0, _commandBuffer.length - 1);
+            _commandBuffer = _commandBuffer.substring(
+              0,
+              _commandBuffer.length - 1,
+            );
           }
         });
       } else {
@@ -390,6 +426,10 @@ class _AppShellState extends State<AppShell> {
   void _onText(String text) {
     if (_pointer.mode == InputMode.command) {
       setState(() => _commandBuffer += text);
+      return;
+    }
+    if (text == ' ') {
+      _handleAction(DawAction.playPause);
       return;
     }
     if (_chordPending) {
@@ -504,7 +544,10 @@ class _AppShellState extends State<AppShell> {
       case DawAction.prevNote:
         _jumpNote(-1);
       case DawAction.barStart:
-        _teleport(_pointer.pitch, (_pointer.col ~/ _project.stepsPerBar) * _project.stepsPerBar);
+        _teleport(
+          _pointer.pitch,
+          (_pointer.col ~/ _project.stepsPerBar) * _project.stepsPerBar,
+        );
       case DawAction.barEnd:
         _teleport(
           _pointer.pitch,
@@ -543,8 +586,10 @@ class _AppShellState extends State<AppShell> {
           });
         }
       case DawAction.eraseToggle:
-        _setMode(_pointer.mode == InputMode.erase ? InputMode.normal : InputMode.erase,
-            message: _pointer.mode == InputMode.erase ? '' : 'ERASE');
+        _setMode(
+          _pointer.mode == InputMode.erase ? InputMode.normal : InputMode.erase,
+          message: _pointer.mode == InputMode.erase ? '' : 'ERASE',
+        );
       case DawAction.replacePitch:
         _replaceUnderCursor();
       case DawAction.deleteSelection:
@@ -600,8 +645,7 @@ class _AppShellState extends State<AppShell> {
       case DawAction.chordPrefix:
         setState(() {
           _chordPending = true;
-          _status =
-              'chord: M maj · m min · a aug · d dim · s 7 · t maj7';
+          _status = 'chord: M maj · m min · a aug · d dim · s 7 · t maj7';
           _statusError = false;
           _revision++;
         });
@@ -716,12 +760,14 @@ class _AppShellState extends State<AppShell> {
       _statusError = false;
       if (view == ViewMode.drumMachine) {
         _drumPadCursor = _drumPadCursor.clamp(
-            0, math.max(0, _drumPads.length - 1));
+          0,
+          math.max(0, _drumPads.length - 1),
+        );
         if (_drumPads.isNotEmpty) {
           _pointer.pitch = _drumPads[_drumPadCursor].pitch;
         }
         _ensureDrumPadVisible();
-        _status = 'drum machine · tap a cell · + SOUND adds a pad';
+        _status = 'drum machine · double-tap a cell · + SOUND adds a pad';
       }
       _revision++;
     });
@@ -782,7 +828,8 @@ class _AppShellState extends State<AppShell> {
       _drumPadCursor = next;
       _pointer.pitch = _drumPads[next].pitch;
       _ensureDrumPadVisible();
-      _status = 'pad ${_drumPads[next].name} · note '
+      _status =
+          'pad ${_drumPads[next].name} · note '
           '${_drumPads[next].pitch} · i toggles';
       _statusError = false;
       _revision++;
@@ -821,7 +868,8 @@ class _AppShellState extends State<AppShell> {
         _project.track.notes.add(
           Note(pitch: pad.pitch, start: col, len: 1, vel: 100),
         );
-        _status = '${pad.name} on · ${_stepLabel(col)}'
+        _status =
+            '${pad.name} on · ${_stepLabel(col)}'
             '${switched ? ' · drum track (ch 10)' : ''}';
       } else {
         for (final h in hits) {
@@ -876,7 +924,8 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _drumPadCursor = padIndex;
       _pointer.pitch = pad.pitch;
-      _status = 'pad ${pad.name} · note ${pad.pitch} · tap a cell to place';
+      _status =
+          'pad ${pad.name} · note ${pad.pitch} · double-tap a cell to place';
       _statusError = false;
       _revision++;
     });
@@ -887,8 +936,10 @@ class _AppShellState extends State<AppShell> {
     if (padIndex < 0 || padIndex >= _drumPads.length) return;
     setState(() {
       final pad = _drumPads.removeAt(padIndex);
-      _drumPadCursor =
-          _drumPadCursor.clamp(0, math.max(0, _drumPads.length - 1));
+      _drumPadCursor = _drumPadCursor.clamp(
+        0,
+        math.max(0, _drumPads.length - 1),
+      );
       if (_drumPads.isNotEmpty) {
         _pointer.pitch = _drumPads[_drumPadCursor].pitch;
       }
@@ -936,6 +987,8 @@ class _AppShellState extends State<AppShell> {
   }
 
   // ------------------------------------------------- drum machine gestures
+  /// One tap moves the cursor, a second tap within 400ms toggles the hit.
+  /// Drag painting keeps working because pan gestures never reach this handler.
   void _onDrumTapUp(Offset local) {
     final l = _layout;
     final x = local.dx.floor();
@@ -955,6 +1008,31 @@ class _AppShellState extends State<AppShell> {
     }
     if (x < l.gridX || !l.inGrid(x, y)) return;
 
+    if (_drumTapCount > 0 &&
+        (_lastDrumTapPos == null || (_lastDrumTapPos! - local).distance > 36)) {
+      _drumTapCount = 0;
+    }
+    _drumTapTimer?.cancel();
+    _drumTapCount++;
+    _lastDrumTapPos = local;
+
+    if (_drumTapCount == 1) {
+      _onDrumSingleTapAt(local);
+    } else {
+      _drumTapCount = 0;
+      _lastDrumTapPos = null;
+      _onDrumDoubleTapAt(local);
+    }
+    _drumTapTimer = Timer(const Duration(milliseconds: 400), () {
+      _drumTapCount = 0;
+      _lastDrumTapPos = null;
+    });
+  }
+
+  void _onDrumSingleTapAt(Offset local) {
+    final l = _layout;
+    final x = local.dx.floor();
+    final y = local.dy.floor();
     final col = l.colForX(x).clamp(0, _project.totalSteps - 1);
     final padIndex = _drumPadOffset + (y - l.gridY) ~/ RollLayout.cellH;
     if (padIndex >= _drumPads.length) {
@@ -967,6 +1045,26 @@ class _AppShellState extends State<AppShell> {
       });
       return;
     }
+    setState(() {
+      _drumPadCursor = padIndex;
+      _pointer.pitch = _drumPads[padIndex].pitch;
+      _pointer.col = col;
+      _ensureDrumPadVisible();
+      _revision++;
+    });
+    _audio.previewNote(
+      _drumPads[padIndex].pitch,
+      velocity: 110,
+      channel: drumMidiChannel,
+    );
+  }
+
+  void _onDrumDoubleTapAt(Offset local) {
+    final l = _layout;
+    final x = local.dx.floor();
+    final y = local.dy.floor();
+    final col = l.colForX(x);
+    final padIndex = _drumPadOffset + (y - l.gridY) ~/ RollLayout.cellH;
     _drumToggleCell(padIndex, col);
   }
 
@@ -1019,9 +1117,8 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _drumScrollPads(double dy) {
-    final int next =
-        (_drumPanPadOffset - (dy / RollLayout.cellH).round())
-            .clamp(0, _drumMaxOffset);
+    final int next = (_drumPanPadOffset - (dy / RollLayout.cellH).round())
+        .clamp(0, _drumMaxOffset);
     if (next == _drumPadOffset) return;
     setState(() {
       _drumPadOffset = next;
@@ -1089,8 +1186,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onDrumGutterScroll(double deltaDy) {
-    final next = (_drumPadOffset - (deltaDy / RollLayout.cellH).round())
-        .clamp(0, _drumMaxOffset);
+    final next = (_drumPadOffset - (deltaDy / RollLayout.cellH).round()).clamp(
+      0,
+      _drumMaxOffset,
+    );
     if (next == _drumPadOffset) return;
     setState(() {
       _drumPadOffset = next;
@@ -1127,7 +1226,9 @@ class _AppShellState extends State<AppShell> {
       case DawAction.barEnd:
         _arrangeMove(
           0,
-          _project.stepsPerBar - 1 - (_arrangeCursorStep % _project.stepsPerBar),
+          _project.stepsPerBar -
+              1 -
+              (_arrangeCursorStep % _project.stepsPerBar),
         );
         return true;
       case DawAction.highestPitch:
@@ -1157,12 +1258,17 @@ class _AppShellState extends State<AppShell> {
     final count = _pointer.countValue;
     _pointer.clearCount();
     setState(() {
-      _arrangeCursorTrack = (_arrangeCursorTrack + dTrack * count)
-          .clamp(0, _arrangeTracks.length - 1);
-      _arrangeCursorStep = (_arrangeCursorStep + dStep * count)
-          .clamp(0, _project.totalSteps - 1);
+      _arrangeCursorTrack = (_arrangeCursorTrack + dTrack * count).clamp(
+        0,
+        _arrangeTracks.length - 1,
+      );
+      _arrangeCursorStep = (_arrangeCursorStep + dStep * count).clamp(
+        0,
+        _project.totalSteps - 1,
+      );
       if (_arrangeSelecting) _arrangeUpdateSelection();
-      _status = 'arrange · track ${_arrangeCursorTrack + 1} · '
+      _status =
+          'arrange · track ${_arrangeCursorTrack + 1} · '
           'bar ${_arrangeCursorStep ~/ _project.stepsPerBar + 1}';
       _statusError = false;
       _revision++;
@@ -1177,7 +1283,8 @@ class _AppShellState extends State<AppShell> {
       _pointer.clearCount();
       final track = _arrangeTracks[_arrangeCursorTrack];
       final exists = track.clips.any(
-        (c) => _arrangeCursorStep >= c.start &&
+        (c) =>
+            _arrangeCursorStep >= c.start &&
             _arrangeCursorStep < c.start + c.length,
       );
       if (exists) {
@@ -1193,7 +1300,8 @@ class _AppShellState extends State<AppShell> {
         );
         clip.selected = true;
         track.clips.add(clip);
-        _status = 'inserted $count-step clip · bar '
+        _status =
+            'inserted $count-step clip · bar '
             '${_arrangeCursorStep ~/ _project.stepsPerBar + 1} · p edit';
         _statusError = false;
       }
@@ -1243,8 +1351,9 @@ class _AppShellState extends State<AppShell> {
       _arrangeSelecting = false;
       _arrangeAnchorTrack = null;
       _arrangeAnchorStep = null;
-      _status = 'bar ${_arrangeCursorStep ~/ _project.stepsPerBar + 1} · '
-      'track ${_arrangeCursorTrack + 1}';
+      _status =
+          'bar ${_arrangeCursorStep ~/ _project.stepsPerBar + 1} · '
+          'track ${_arrangeCursorTrack + 1}';
       _statusError = false;
       _revision++;
     });
@@ -1274,8 +1383,10 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _arrangeCursorTrack = trackIndex.clamp(0, _arrangeTracks.length - 1);
       _clipOpenTrack = _arrangeCursorTrack;
-      _project.activeTrack =
-          _arrangeCursorTrack.clamp(0, _project.tracks.length - 1);
+      _project.activeTrack = _arrangeCursorTrack.clamp(
+        0,
+        _project.tracks.length - 1,
+      );
       _pointer.col = 0;
       _pointer.pitch = 60;
       _pointer.mode = InputMode.normal;
@@ -1293,8 +1404,10 @@ class _AppShellState extends State<AppShell> {
   void _openClipInRoll(ArrangementClip target) {
     setState(() {
       _clipOpenTrack = target.trackIndex;
-      _project.activeTrack =
-          target.trackIndex.clamp(0, _project.tracks.length - 1);
+      _project.activeTrack = target.trackIndex.clamp(
+        0,
+        _project.tracks.length - 1,
+      );
       _pointer.col = target.start;
       _pointer.pitch = 60;
       _pointer.mode = InputMode.normal;
@@ -1428,8 +1541,10 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       final entries = _browserEntries;
       if (entries.isEmpty) return;
-      _browserIndex =
-          (_browserIndex + delta * count).clamp(0, entries.length - 1);
+      _browserIndex = (_browserIndex + delta * count).clamp(
+        0,
+        entries.length - 1,
+      );
       _revision++;
     });
   }
@@ -1437,8 +1552,10 @@ class _AppShellState extends State<AppShell> {
   void _browserMoveCategory(int delta) {
     _pointer.clearCount();
     setState(() {
-      _browserCategory =
-          (_browserCategory + delta).clamp(0, _browserCategories.length - 1);
+      _browserCategory = (_browserCategory + delta).clamp(
+        0,
+        _browserCategories.length - 1,
+      );
       _browserIndex = 0;
       _revision++;
     });
@@ -1498,8 +1615,7 @@ class _AppShellState extends State<AppShell> {
     final count = _pointer.countValue;
     _pointer.clearCount();
     setState(() {
-      _autoStep =
-          (_autoStep + delta * count).clamp(0, _project.totalSteps - 1);
+      _autoStep = (_autoStep + delta * count).clamp(0, _project.totalSteps - 1);
       _revision++;
     });
   }
@@ -1516,8 +1632,7 @@ class _AppShellState extends State<AppShell> {
   void _autoSelectLane(int delta) {
     _pointer.clearCount();
     setState(() {
-      _autoLaneIndex =
-          (_autoLaneIndex + delta).clamp(0, _autoLanes.length - 1);
+      _autoLaneIndex = (_autoLaneIndex + delta).clamp(0, _autoLanes.length - 1);
       _revision++;
     });
   }
@@ -1549,8 +1664,10 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     final nPitch = (_pointer.pitch + dPitch * count).clamp(0, 127);
-    final nCol =
-        (_pointer.col + dCol * count).clamp(0, _project.totalSteps - 1);
+    final nCol = (_pointer.col + dCol * count).clamp(
+      0,
+      _project.totalSteps - 1,
+    );
     if (_pointer.mode == InputMode.draw) {
       _pushUndo();
       _paintLine(_pointer.pitch, _pointer.col, nPitch, nCol);
@@ -1583,8 +1700,7 @@ class _AppShellState extends State<AppShell> {
         n.start = (n.start + dc).clamp(0, _project.totalSteps - n.len);
       }
       _pointer.pitch = (_pointer.pitch + dp).clamp(0, 127);
-      _pointer.col =
-          (_pointer.col + dc).clamp(0, _project.totalSteps - 1);
+      _pointer.col = (_pointer.col + dc).clamp(0, _project.totalSteps - 1);
       _status = 'move ${_grabNotes.length} note(s) · CTRL to release';
       _statusError = false;
       _revision++;
@@ -1609,7 +1725,7 @@ class _AppShellState extends State<AppShell> {
               ? 'box selected nothing'
               : 'grabbed ${_grabNotes.length} note(s) · h/j/k/l move · CTRL release';
           _statusError = _grabNotes.isEmpty;
-} else {
+        } else {
           // Moving — release grab but KEEP selection for further edits (chord, delete, etc.)
           _grabNotes.clear();
           _grabUndoPushed = false;
@@ -1671,7 +1787,11 @@ class _AppShellState extends State<AppShell> {
       _revision++;
     });
     final drums = _view == ViewMode.drumMachine || isDrumTrack(_project.track);
-    _audio.previewNote(_pointer.pitch, velocity: 90, channel: drums ? drumMidiChannel : _previewChannel);
+    _audio.previewNote(
+      _pointer.pitch,
+      velocity: 90,
+      channel: drums ? drumMidiChannel : _previewChannel,
+    );
     _ensureVisible();
   }
 
@@ -1700,9 +1820,11 @@ class _AppShellState extends State<AppShell> {
 
   void _jumpNote(int dir) {
     final notes = _project.track.notes.toList()
-      ..sort((a, b) => a.start == b.start
-          ? a.pitch.compareTo(b.pitch)
-          : a.start.compareTo(b.start));
+      ..sort(
+        (a, b) => a.start == b.start
+            ? a.pitch.compareTo(b.pitch)
+            : a.start.compareTo(b.start),
+      );
     if (notes.isEmpty) return;
     ({int pitch, int start})? target;
     if (dir > 0) {
@@ -1794,7 +1916,9 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _eraseAt(int pitch, int col) {
-    _project.track.notes.removeWhere((n) => n.pitch == pitch && n.contains(col));
+    _project.track.notes.removeWhere(
+      (n) => n.pitch == pitch && n.contains(col),
+    );
     _project.selection.removeWhere((n) => n.pitch == pitch && n.contains(col));
   }
 
@@ -1806,8 +1930,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _replaceUnderCursor() {
-    _setMode(InputMode.replace,
-        message: 'REPLACE: move up/down to drag pitch');
+    _setMode(InputMode.replace, message: 'REPLACE: move up/down to drag pitch');
   }
 
   void _updateSelection() {
@@ -1846,8 +1969,10 @@ class _AppShellState extends State<AppShell> {
         _project.noteAt(_pointer.pitch, _pointer.col) == null) {
       // Nothing to delete: `d` on an empty cell arms Erase (tap again to leave).
       final arm = _pointer.mode != InputMode.erase;
-      _setMode(arm ? InputMode.erase : InputMode.normal,
-          message: arm ? 'ERASE' : '');
+      _setMode(
+        arm ? InputMode.erase : InputMode.normal,
+        message: arm ? 'ERASE' : '',
+      );
       return;
     }
     _pushUndo();
@@ -1884,8 +2009,8 @@ class _AppShellState extends State<AppShell> {
     final src = _project.selection.isNotEmpty
         ? _project.selection.toList()
         : (_project.noteAt(_pointer.pitch, _pointer.col) is Note
-            ? [_project.noteAt(_pointer.pitch, _pointer.col)!]
-            : <Note>[]);
+              ? [_project.noteAt(_pointer.pitch, _pointer.col)!]
+              : <Note>[]);
     setState(() {
       _yank = src.map((n) => n.copy()).toList();
       _status = 'yanked ${_yank.length} note(s)';
@@ -1899,8 +2024,8 @@ class _AppShellState extends State<AppShell> {
     final src = _project.selection.isNotEmpty
         ? _project.selection.toList()
         : (_project.noteAt(_pointer.pitch, _pointer.col) is Note
-            ? [_project.noteAt(_pointer.pitch, _pointer.col)!]
-            : <Note>[]);
+              ? [_project.noteAt(_pointer.pitch, _pointer.col)!]
+              : <Note>[]);
     setState(() {
       _yank = src.map((n) => n.copy()).toList();
       if (_project.selection.isNotEmpty) {
@@ -2032,15 +2157,17 @@ class _AppShellState extends State<AppShell> {
   /// a drum track is active, otherwise the active track's own channel.
   int get _previewChannel =>
       (_view == ViewMode.drumMachine || isDrumTrack(_project.track))
-          ? drumMidiChannel
-          : _project.track.channel;
+      ? drumMidiChannel
+      : _project.track.channel;
 
   void _play() {
     _playTimer?.cancel();
     _pausedAt = null;
     final scheduled = _scheduleSequence();
     final stepMs = (_secPerStep * 1000).round();
-    _playTimer = Timer.periodic(Duration(milliseconds: math.max(10, stepMs)), (_) {
+    _playTimer = Timer.periodic(Duration(milliseconds: math.max(10, stepMs)), (
+      _,
+    ) {
       if (!mounted) return;
       setState(() {
         _playCol = (_playCol + 1) % _project.totalSteps;
@@ -2200,8 +2327,10 @@ class _AppShellState extends State<AppShell> {
       case 'view':
         final name = args.isEmpty ? '' : args.first;
         final match = ViewMode.values
-            .where((v) =>
-                v.name == name || v.label.toLowerCase() == name.toLowerCase())
+            .where(
+              (v) =>
+                  v.name == name || v.label.toLowerCase() == name.toLowerCase(),
+            )
             .toList();
         if (match.isEmpty) {
           _status = 'E: unknown view: $name';
@@ -2248,11 +2377,15 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _project.selection
         ..clear()
-        ..addAll(_project.track.notes.where((n) =>
-            n.start >= loCol &&
-            n.start <= hiCol &&
-            n.pitch >= loP &&
-            n.pitch <= hiP));
+        ..addAll(
+          _project.track.notes.where(
+            (n) =>
+                n.start >= loCol &&
+                n.start <= hiCol &&
+                n.pitch >= loP &&
+                n.pitch <= hiP,
+          ),
+        );
       _grabNotes
         ..clear()
         ..addAll(_project.selection);
@@ -2368,7 +2501,12 @@ class _AppShellState extends State<AppShell> {
     if (roots.isEmpty) {
       // Create a root note at the cursor so chord can be built on empty cells.
       _pushUndo();
-      final root = Note(pitch: _pointer.pitch, start: _pointer.col, len: _noteLen, vel: 100);
+      final root = Note(
+        pitch: _pointer.pitch,
+        start: _pointer.col,
+        len: _noteLen,
+        vel: 100,
+      );
       _project.track.notes.add(root);
       roots.add(root);
     }
@@ -2391,16 +2529,19 @@ class _AppShellState extends State<AppShell> {
       _statusError = created.isEmpty;
       _revision++;
     });
-    _audio.previewNote(roots.first.pitch,
-        velocity: 100, channel: _project.track.channel);
+    _audio.previewNote(
+      roots.first.pitch,
+      velocity: 100,
+      channel: _project.track.channel,
+    );
   }
 
   // -------------------------------------------------------- theory commands
   List<tc.ChordSpec> _parseChords(String spec) => tc.parseProgression(
-        spec,
-        keyRoot: _project.scaleRoot,
-        scaleName: _project.scaleName,
-      );
+    spec,
+    keyRoot: _project.scaleRoot,
+    scaleName: _project.scaleName,
+  );
 
   /// Grow the project so generated notes actually fall inside the grid.
   void _extendBars(Iterable<Note> notes) {
@@ -2433,8 +2574,11 @@ class _AppShellState extends State<AppShell> {
       final chords = _parseChords(spec);
       _lastChords = chords;
       _addGenerated(
-        tc.progressionNotes(chords,
-            startCol: _pointer.col, barLen: _project.stepsPerBar),
+        tc.progressionNotes(
+          chords,
+          startCol: _pointer.col,
+          barLen: _project.stepsPerBar,
+        ),
         'prog $spec · ${chords.length} chord(s)',
       );
     } on tc.TheoryError catch (e) {
@@ -2472,8 +2616,7 @@ class _AppShellState extends State<AppShell> {
           .split(RegExp(r'\s+'))
           .where((t) => t.isNotEmpty)
           .toList();
-      final tail =
-          parts.length > 1 ? parts[1].trim().replaceAll(' ', '') : '';
+      final tail = parts.length > 1 ? parts[1].trim().replaceAll(' ', '') : '';
       if (tail.isNotEmpty) pattern = tail;
     } else if (tokens.length > 1 && _isStrumPattern(tokens.last)) {
       pattern = tokens.removeLast();
@@ -2504,9 +2647,7 @@ class _AppShellState extends State<AppShell> {
     final spec = args.where((a) => a != 'walk').join(' ');
     try {
       final chords = spec.isEmpty
-          ? (_lastChords.isNotEmpty
-              ? _lastChords
-              : _parseChords('I V vi IV'))
+          ? (_lastChords.isNotEmpty ? _lastChords : _parseChords('I V vi IV'))
           : _parseChords(spec);
       _lastChords = chords;
       _addGenerated(
@@ -2535,8 +2676,11 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     _addGenerated(
-      tc.patternNotes(pattern,
-          startCol: _pointer.col, keyRoot: _project.scaleRoot),
+      tc.patternNotes(
+        pattern,
+        startCol: _pointer.col,
+        keyRoot: _project.scaleRoot,
+      ),
       'beat ${pattern.id} · ${pattern.title}',
     );
   }
@@ -2550,7 +2694,8 @@ class _AppShellState extends State<AppShell> {
       _cmdBeat(args);
       return;
     }
-    final on = arg == 'on' ||
+    final on =
+        arg == 'on' ||
         (arg == 'toggle' && _project.track.type != TrackType.drum);
     _project.track.type = on ? TrackType.drum : TrackType.synth;
     if (on) _project.track.channel = 9;
@@ -2564,7 +2709,8 @@ class _AppShellState extends State<AppShell> {
   void _cmdInstrument(List<String> args) {
     final q = args.join(' ').trim();
     if (q.isEmpty) {
-      _status = 'inst ${gmProgramName(_project.track.instrument)} '
+      _status =
+          'inst ${gmProgramName(_project.track.instrument)} '
           '(program ${_project.track.instrument + 1})';
       _statusError = false;
       return;
@@ -2610,13 +2756,17 @@ class _AppShellState extends State<AppShell> {
       if (!drum) {
         _audio.setTrackInstrument(_project.track.channel, hit.program);
       }
-      _status = 'inst ${hit.name} (program ${hit.program + 1})'
+      _status =
+          'inst ${hit.name} (program ${hit.program + 1})'
           '${drum ? ' · drum track keeps the GM kit' : ''}';
       _statusError = false;
       _revision++;
     });
-    _audio.previewNote(_pointer.pitch,
-        velocity: 100, channel: _project.track.channel);
+    _audio.previewNote(
+      _pointer.pitch,
+      velocity: 100,
+      channel: _project.track.channel,
+    );
   }
 
   /// Toolbar chip -> tap-to-load General MIDI picker.
@@ -2643,11 +2793,11 @@ class _AppShellState extends State<AppShell> {
   List<Note> _resizeTargets() => _grabNotes.isNotEmpty
       ? _grabNotes
       : _project.selection.isNotEmpty
-          ? _project.selection.toList()
-          : [
-              if (_project.noteAt(_pointer.pitch, _pointer.col) != null)
-                _project.noteAt(_pointer.pitch, _pointer.col)!
-            ];
+      ? _project.selection.toList()
+      : [
+          if (_project.noteAt(_pointer.pitch, _pointer.col) != null)
+            _project.noteAt(_pointer.pitch, _pointer.col)!,
+        ];
 
   /// Grow/shrink the grabbed set, the selection, or the note under the cursor.
   void _changeLength(int delta) {
@@ -2706,7 +2856,10 @@ class _AppShellState extends State<AppShell> {
     }
     final cycle = _lengthCycle();
     final current = targets.first.len;
-    final next = cycle.firstWhere((v) => v > current, orElse: () => cycle.first);
+    final next = cycle.firstWhere(
+      (v) => v > current,
+      orElse: () => cycle.first,
+    );
     _pushUndo();
     setState(() {
       for (final n in targets) {
@@ -2830,13 +2983,27 @@ class _AppShellState extends State<AppShell> {
         _revision++;
       });
     }
-    _teleport(cell.pitch, cell.col);
+    // Move cursor only; drawing now happens on double tap.
+    setState(() {
+      _pointer.pitch = cell.pitch.clamp(0, 127);
+      _pointer.col = cell.col.clamp(0, _project.totalSteps - 1);
+      if (_view == ViewMode.drumMachine) _syncDrumCursorToPitch();
+      _revision++;
+    });
+    final drums = _view == ViewMode.drumMachine || isDrumTrack(_project.track);
+    _audio.previewNote(
+      _pointer.pitch,
+      velocity: 90,
+      channel: drums ? drumMidiChannel : _previewChannel,
+    );
+    _ensureVisible();
   }
 
   void _onDoubleTapAt(Offset local) {
     final cell = _cellAt(local);
     if (cell == null) return;
     if (_pointer.mode == InputMode.draw || _pointer.mode == InputMode.erase) {
+      // Draw/erase on double tap
       _teleport(cell.pitch, cell.col);
       return;
     }
@@ -2860,8 +3027,11 @@ class _AppShellState extends State<AppShell> {
       _statusError = false;
       _revision++;
     });
-    _audio.previewNote(cell.pitch,
-        velocity: 90, channel: _project.track.channel);
+    _audio.previewNote(
+      cell.pitch,
+      velocity: 90,
+      channel: _project.track.channel,
+    );
     _ensureVisible();
   }
 
@@ -2913,6 +3083,9 @@ class _AppShellState extends State<AppShell> {
       case 'end':
         _clearSticky();
         _handleAction(DawAction.barEnd);
+      case 'play':
+        _clearSticky();
+        _handleAction(DawAction.playPause);
       case 'left':
         _virtualMove(dx: -1);
       case 'right':
@@ -2930,7 +3103,11 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  void _toggleSticky({bool shift = false, bool ctrl = false, bool alt = false}) {
+  void _toggleSticky({
+    bool shift = false,
+    bool ctrl = false,
+    bool alt = false,
+  }) {
     setState(() {
       if (shift) _stickyShift = !_stickyShift;
       if (ctrl) _stickyCtrl = !_stickyCtrl;
@@ -2938,8 +3115,8 @@ class _AppShellState extends State<AppShell> {
       _showCmd = shift
           ? (_stickyShift ? 'SHIFT' : '')
           : ctrl
-              ? (_stickyCtrl ? 'CTRL' : '')
-              : (_stickyAlt ? 'ALT' : '');
+          ? (_stickyCtrl ? 'CTRL' : '')
+          : (_stickyAlt ? 'ALT' : '');
       _revision++;
     });
     _showCmdTimer?.cancel();
@@ -3006,9 +3183,7 @@ class _AppShellState extends State<AppShell> {
     _pushUndo();
     _dragging = true;
     _dragCell = cell;
-    _dragBase = [
-      for (final n in _project.selection) (n, n.pitch, n.start),
-    ];
+    _dragBase = [for (final n in _project.selection) (n, n.pitch, n.start)];
     setState(() {
       _status = 'moving ${_dragBase.length} note(s)';
       _statusError = false;
@@ -3017,7 +3192,9 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onPanAt(Offset local) {
-    if (_scrollAxis.isNotEmpty && _scrollStart != null && _panStartLocal != null) {
+    if (_scrollAxis.isNotEmpty &&
+        _scrollStart != null &&
+        _panStartLocal != null) {
       final dx = local.dx - _panStartLocal!.dx;
       final dy = local.dy - _panStartLocal!.dy;
       setState(() {
@@ -3028,8 +3205,10 @@ class _AppShellState extends State<AppShell> {
         }
         if (_scrollAxis != 'pitch') {
           final cols = (dx / RollLayout.cellW).round();
-          _viewCol = (_scrollStart!.col - cols)
-              .clamp(0, math.max(0, _project.totalSteps - 1));
+          _viewCol = (_scrollStart!.col - cols).clamp(
+            0,
+            math.max(0, _project.totalSteps - 1),
+          );
         }
         _revision++;
       });
@@ -3047,8 +3226,10 @@ class _AppShellState extends State<AppShell> {
           n.start = (s0 + dCol).clamp(0, _project.totalSteps - n.len);
         }
         _pointer.pitch = (_dragCell!.pitch + dPitch).clamp(0, 127);
-        _pointer.col =
-            (_dragCell!.col + dCol).clamp(0, _project.totalSteps - 1);
+        _pointer.col = (_dragCell!.col + dCol).clamp(
+          0,
+          _project.totalSteps - 1,
+        );
         _revision++;
       });
       return;
@@ -3112,8 +3293,10 @@ class _AppShellState extends State<AppShell> {
         }
       }
       if (cols != 0) {
-        _viewCol = (_viewCol + cols)
-            .clamp(0, math.max(0, _project.totalSteps - 1));
+        _viewCol = (_viewCol + cols).clamp(
+          0,
+          math.max(0, _project.totalSteps - 1),
+        );
       }
       _revision++;
     });
@@ -3136,12 +3319,12 @@ class _AppShellState extends State<AppShell> {
             child: Padding(
               // Keep the whole UI inside the safe area and lift it above the soft
               // keyboard, so the extra-keys row sits on the keyboard's top edge.
-               padding: EdgeInsets.only(
-                 top: math.max(0.0, safe.top),
-                 bottom: math.max(0.0, insets.bottom),
-                 left: math.max(0.0, safe.left),
-                 right: math.max(0.0, safe.right),
-               ),
+              padding: EdgeInsets.only(
+                top: math.max(0.0, safe.top),
+                bottom: math.max(0.0, insets.bottom),
+                left: math.max(0.0, safe.left),
+                right: math.max(0.0, safe.right),
+              ),
               child: Column(
                 children: [
                   _buildToolbar(),
@@ -3327,17 +3510,33 @@ class _AppShellState extends State<AppShell> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _helpSection('TOUCH', [
-                ('tap', 'move the cursor (draw/erase mode paints)'),
+                ('tap', 'move the cursor'),
                 ('double-tap', 'empty cell adds a note · a note selects it'),
-                ('drag a selected note', 'move it (the rest of the selection follows)'),
+                (
+                  'drag a selected note',
+                  'move it (the rest of the selection follows)',
+                ),
                 ('long-press', 'delete the note under your finger'),
                 ('triple-tap a note', 'arm chord mode, then pick a quality'),
                 ('drag the gutter / ruler', 'scroll pitches / time'),
                 ('mouse wheel / trackpad', 'scroll the roll'),
-                ('arrangement: tap / double-tap', 'select · open the clip in the roll'),
-                ('instrument chip', 'tap the toolbar chip, then tap a sound to load'),
-                ('drums: tap a cell', 'place a hit · drag across to paint a run'),
-                ('drums: long-press a hit', 'erase it · tap the pad name to preview'),
+                (
+                  'arrangement: tap / double-tap',
+                  'select · open the clip in the roll',
+                ),
+                (
+                  'instrument chip',
+                  'tap the toolbar chip, then tap a sound to load',
+                ),
+                (
+                  'drums: tap a cell',
+                  'move the cursor · drag across to paint a run',
+                ),
+                ('drums: double-tap a cell', 'place or remove a hit'),
+                (
+                  'drums: long-press a hit',
+                  'erase it · tap the pad name to preview',
+                ),
                 ('drums: + SOUND', 'add kick, snare … from the GM kit'),
                 ('drums: drag the pad column', 'scroll the sounds'),
               ], keyW),
@@ -3358,6 +3557,7 @@ class _AppShellState extends State<AppShell> {
                 ('y / v / V', 'yank · paste after · paste before'),
                 ('p', 'open the clip in the roll / return to arrange'),
                 ('CTRL+a', 'select every note on the track'),
+                ('CTRL+d', 'delete the selected notes'),
                 ('u / CTRL+r', 'undo / redo'),
                 ('[ / ]', 'shorten / lengthen note(s)'),
                 ('+ / -', 'transpose a semitone · CTRL versions: octave'),
@@ -3383,17 +3583,26 @@ class _AppShellState extends State<AppShell> {
                 ('TAB / the tab bar', 'cycle views'),
               ], keyW),
               _helpSection('TRANSPORT + COMMANDS', [
-                ('Space / Enter', 'play — pushes the notes to the engine · again quickly: restart'),
+                (
+                  'Space / Enter',
+                  'play — pushes the notes to the engine · again quickly: restart',
+                ),
                 ('.', 'stop'),
                 (':', 'command line (Esc leaves it)'),
                 (':scale D Minor', 'set the project key'),
                 (':chord major', 'harmonise under the cursor'),
                 (':prog pop', 'one chord per bar'),
                 (':strum i v iv d-uu-u', 'strummed progression'),
-                (':bass / :bass I V | walk', 'bass line for the last progression'),
+                (
+                  ':bass / :bass I V | walk',
+                  'bass line for the last progression',
+                ),
                 (':beat b001', 'rhythm-library pattern at the cursor'),
                 (':drum on|off', 'drum track: roll keys read KICK SNARE …'),
-                (':inst piano / :inst 118', 'load an instrument by name or number'),
+                (
+                  ':inst piano / :inst 118',
+                  'load an instrument by name or number',
+                ),
                 (':view drums / :help', 'switch view'),
               ], keyW),
             ],
@@ -3409,10 +3618,7 @@ class _AppShellState extends State<AppShell> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: DawFonts.display(size: 12, spacing: 1.6),
-          ),
+          Text(title, style: DawFonts.display(size: 12, spacing: 1.6)),
           const SizedBox(height: 8),
           for (final (keys, desc) in rows)
             Padding(
@@ -3424,15 +3630,16 @@ class _AppShellState extends State<AppShell> {
                     width: keyW,
                     child: Text(
                       keys,
-                      style: DawFonts.mono(
-                          size: 12, color: DawColors.textDim),
+                      style: DawFonts.mono(size: 12, color: DawColors.textDim),
                     ),
                   ),
                   Expanded(
                     child: Text(
                       desc,
-                      style:
-                          DawFonts.body(size: 12, color: DawColors.textFaint),
+                      style: DawFonts.body(
+                        size: 12,
+                        color: DawColors.textFaint,
+                      ),
                     ),
                   ),
                 ],
@@ -3453,8 +3660,7 @@ class _AppShellState extends State<AppShell> {
       ),
       child: Row(
         children: [
-          Text('VIMDAW',
-              style: DawFonts.display(size: 13, spacing: 2.4)),
+          Text('VIMDAW', style: DawFonts.display(size: 13, spacing: 2.4)),
           const SizedBox(width: 12),
           Expanded(
             child: Row(
@@ -3472,11 +3678,14 @@ class _AppShellState extends State<AppShell> {
             ),
           ),
           Text(
-              '${theory.noteNames[_project.scaleRoot]} ${_project.scaleName}',
-              style: DawFonts.body(size: 11, color: DawColors.textFaint)),
+            '${theory.noteNames[_project.scaleRoot]} ${_project.scaleName}',
+            style: DawFonts.body(size: 11, color: DawColors.textFaint),
+          ),
           const SizedBox(width: 16),
-          Text('${_project.bpm} BPM',
-              style: DawFonts.mono(size: 11, color: DawColors.textDim)),
+          Text(
+            '${_project.bpm} BPM',
+            style: DawFonts.mono(size: 11, color: DawColors.textDim),
+          ),
           const SizedBox(width: 16),
           _transportIcon(AppIcons.stop, _stop),
           const SizedBox(width: 12),
@@ -3516,16 +3725,22 @@ class _AppShellState extends State<AppShell> {
               ),
             ),
             const SizedBox(width: 2),
-            const Icon(Icons.arrow_drop_down,
-                size: 16, color: DawColors.textFaint),
+            const Icon(
+              Icons.arrow_drop_down,
+              size: 16,
+              color: DawColors.textFaint,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _transportIcon(IconData icon, VoidCallback onTap,
-      {bool active = false}) {
+  Widget _transportIcon(
+    IconData icon,
+    VoidCallback onTap, {
+    bool active = false,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Icon(
@@ -3546,9 +3761,7 @@ class _AppShellState extends State<AppShell> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 14),
-              children: [
-                for (final v in ViewMode.values) _viewTab(v),
-              ],
+              children: [for (final v in ViewMode.values) _viewTab(v)],
             ),
           ),
           _iconToggle(
@@ -3615,14 +3828,19 @@ class _AppShellState extends State<AppShell> {
             child: cmdMode
                 ? Row(
                     children: [
-                      Text(':',
-                          style: DawFonts.mono(
-                              size: 13,
-                              weight: FontWeight.w800,
-                              color: _accent.accent)),
+                      Text(
+                        ':',
+                        style: DawFonts.mono(
+                          size: 13,
+                          weight: FontWeight.w800,
+                          color: _accent.accent,
+                        ),
+                      ),
                       const SizedBox(width: 4),
-                      Text(_commandBuffer,
-                          style: DawFonts.mono(size: 13, color: DawColors.text)),
+                      Text(
+                        _commandBuffer,
+                        style: DawFonts.mono(size: 13, color: DawColors.text),
+                      ),
                       if (_blinkOn)
                         Container(
                           width: 8,
@@ -3643,15 +3861,20 @@ class _AppShellState extends State<AppShell> {
           ),
           if (!cmdMode && _showCmd.isNotEmpty) ...[
             const SizedBox(width: 10),
-            Text(_showCmd,
-                style: DawFonts.mono(
-                    size: 12,
-                    weight: FontWeight.w700,
-                    color: _accent.accent)),
+            Text(
+              _showCmd,
+              style: DawFonts.mono(
+                size: 12,
+                weight: FontWeight.w700,
+                color: _accent.accent,
+              ),
+            ),
           ],
           const SizedBox(width: 12),
-          Text(_positionString(),
-              style: DawFonts.mono(size: 12, color: DawColors.textFaint)),
+          Text(
+            _positionString(),
+            style: DawFonts.mono(size: 12, color: DawColors.textFaint),
+          ),
         ],
       ),
     );
@@ -3678,7 +3901,18 @@ class _AppShellState extends State<AppShell> {
         (_pointer.col % _project.stepsPerBar) ~/ _project.stepsPerBeat + 1;
     final pc = ((_pointer.pitch % 12) + 12) % 12;
     const names = [
-      'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B',
+      'C',
+      'C#',
+      'D',
+      'D#',
+      'E',
+      'F',
+      'F#',
+      'G',
+      'G#',
+      'A',
+      'A#',
+      'B',
     ];
     return '$bar.$beat  ${names[pc]}${(_pointer.pitch ~/ 12) - 1}';
   }
@@ -3699,6 +3933,7 @@ class _AppShellState extends State<AppShell> {
           _key('CTRL', 'ctrl', active: _grabActive),
           _key('ALT', 'alt', active: _stickyAlt),
           _key('SHIFT', 'shift', active: _stickyShift),
+          _key('SPC', 'play'),
           _key('', 'left', icon: AppIcons.arrowLeft),
           _key('', 'up', icon: AppIcons.arrowUp),
           _key('', 'down', icon: AppIcons.arrowDown),
@@ -3712,8 +3947,12 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _key(String label, String action,
-      {bool active = false, IconData? icon}) {
+  Widget _key(
+    String label,
+    String action, {
+    bool active = false,
+    IconData? icon,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: GestureDetector(
@@ -3732,9 +3971,11 @@ class _AppShellState extends State<AppShell> {
             ),
           ),
           child: icon != null
-              ? Icon(icon,
+              ? Icon(
+                  icon,
                   size: 16,
-                  color: active ? _accent.accent : DawColors.textDim)
+                  color: active ? _accent.accent : DawColors.textDim,
+                )
               : Text(
                   label,
                   style: DawFonts.body(

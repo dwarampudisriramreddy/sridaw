@@ -9,7 +9,7 @@ on-screen extra-keys row mirrors the same commands for touch devices.
 | Mode | Enter | Notes |
 | --- | --- | --- |
 | Normal | `Esc` | navigation and editing commands |
-| Draw | `i` or `Space` | `h j k l` paints a line of notes |
+| Draw | `i` | `h j k l` paints a line of notes |
 | Erase | `d` on an empty cell | `h j k l` erases along a line |
 | Replace | `r` | move up/down to drag the pitch of the note under the cursor |
 | Command | `:` | type a `:`-command, then `Enter` |
@@ -65,11 +65,12 @@ release the grab.
 
 | Keys | Action |
 | --- | --- |
-| `i` / `Space` | toggle Draw |
+| `i` | toggle Draw |
 | `x` | cut selection (or the note under the cursor) |
 | `r` | replace/drag pitch |
 | `v` / `V` | paste after / before |
 | `Ctrl+a` | select all notes on the active track |
+| `Ctrl+d` | delete the selected notes |
 | `d` | delete selection/note · on an empty cell: toggle Erase |
 | `y` | yank selection (or the note under the cursor) |
 | `u` / `Ctrl+r` | undo / redo |
@@ -169,7 +170,8 @@ steps:
 
 | Touch | Action |
 | --- | --- |
-| tap a cell | place a hit (tapping again removes it) |
+| tap a cell | move the cursor (a single tap never draws) |
+| double-tap a cell | place a hit (double-tapping again removes it) |
 | drag across the grid | paint a run of hits (adds only) |
 | long-press a hit | erase it |
 | tap a pad name | preview the sound and select its row |
@@ -209,16 +211,16 @@ Press `:` and type a command, then `Enter`:
 
 An always-on soft keyboard feeds characters through the same keymap, so
 `h j k l` behave identically. The extra-keys row provides `Esc`, `Tab`,
-`Ctrl`, `Alt`, `Shift`, the arrows, `Home`, `End`, `:` and the theme button.
-Sticky modifiers highlight when active.
+`Ctrl`, `Alt`, `Shift`, `Space`, the arrows, `Home`, `End`, `:` and the theme
+button. Sticky modifiers highlight when active.
 
 Everything you can reach with the keyboard is also tappable: the tabs switch
 views, the toolbar starts/stops playback, the instrument chip (next to the
 track name) opens the tap-to-load sound list, mixer faders and toggles respond
-to touch, and the drum machine lays hits down under a finger (tap to toggle,
-drag to paint a run).
+to touch, and the drum machine lays hits down under a finger (tap to move the
+cursor, double-tap to toggle a hit, drag to paint a run).
 
-In the piano roll, tap to place the cursor, double-tap an empty cell to add a
+In the piano roll, tap to move the cursor, double-tap an empty cell to add a
 note (or a note to select it), drag a selected note to move it (drag the
 selection to move every selected note), triple-tap a note to arm chord mode,
 and long-press a note to delete it. Drag the keyboard gutter or the ruler to

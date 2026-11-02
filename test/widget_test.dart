@@ -19,7 +19,9 @@ void main() {
   // that outlive the widget tree).
   GoogleFonts.config.allowRuntimeFetching = false;
 
-  testWidgets('pixel shell builds and the pointer moves with h/l', (tester) async {
+  testWidgets('pixel shell builds and the pointer moves with h/l', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -92,8 +94,9 @@ void main() {
     expect(len(), 3);
   });
 
-  testWidgets('CTRL on an empty cell starts a rectangle box select',
-      (tester) async {
+  testWidgets('CTRL on an empty cell starts a rectangle box select', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -191,15 +194,15 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('arrangement i creates a clip and d deletes it',
-      (tester) async {
+  testWidgets('arrangement i creates a clip and d deletes it', (tester) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     await goToArrangement(tester);
 
     expect(find.byType(ArrangementView), findsOneWidget);
-    final tracks =
-        tester.widget<ArrangementView>(find.byType(ArrangementView)).tracks;
+    final tracks = tester
+        .widget<ArrangementView>(find.byType(ArrangementView))
+        .tracks;
 
     // Move to an empty track (index 3).
     for (var i = 0; i < 3; i++) {
@@ -219,14 +222,16 @@ void main() {
     expect(tracks[3].clips, isEmpty);
   });
 
-  testWidgets('arrangement CTRL box-selects clips and d deletes them',
-      (tester) async {
+  testWidgets('arrangement CTRL box-selects clips and d deletes them', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     await goToArrangement(tester);
 
-    final tracks =
-        tester.widget<ArrangementView>(find.byType(ArrangementView)).tracks;
+    final tracks = tester
+        .widget<ArrangementView>(find.byType(ArrangementView))
+        .tracks;
     final before = tracks[0].clips.length;
 
     // CTRL tap starts a box selection anchored at track 0 / step 0.
@@ -250,14 +255,16 @@ void main() {
     expect(tracks[0].clips.length, lessThan(before));
   });
 
-  testWidgets('arrangement i makes a 1-step clip and p toggles its roll',
-      (tester) async {
+  testWidgets('arrangement i makes a 1-step clip and p toggles its roll', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     await goToArrangement(tester);
 
-    final tracks =
-        tester.widget<ArrangementView>(find.byType(ArrangementView)).tracks;
+    final tracks = tester
+        .widget<ArrangementView>(find.byType(ArrangementView))
+        .tracks;
 
     // Move to an empty track (index 3).
     for (var i = 0; i < 3; i++) {
@@ -297,8 +304,9 @@ void main() {
     expect(painter().scene.project.scaleName, 'Natural Minor');
   });
 
-  testWidgets('the :chord command harmonises the note under the cursor',
-      (tester) async {
+  testWidgets('the :chord command harmonises the note under the cursor', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     final rollFinder = find.byWidgetPredicate(
@@ -314,8 +322,9 @@ void main() {
     expect(notes.where((n) => n.pitch == 67 && n.start == 0), hasLength(1));
   });
 
-  testWidgets('theory commands lay down progressions, bass and beats',
-      (tester) async {
+  testWidgets('theory commands lay down progressions, bass and beats', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     final rollFinder = find.byWidgetPredicate(
@@ -327,8 +336,11 @@ void main() {
     await runCommand(tester, 'prog pop');
     var notes = painter().scene.project.track.notes;
     for (final start in [16, 32, 48]) {
-      expect(notes.where((n) => n.start == start), isNotEmpty,
-          reason: 'bar at step $start');
+      expect(
+        notes.where((n) => n.start == start),
+        isNotEmpty,
+        reason: 'bar at step $start',
+      );
     }
 
     await runCommand(tester, 'bass');
@@ -342,8 +354,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('s enters strum mode and creates strummed chords',
-      (tester) async {
+  testWidgets('s enters strum mode and creates strummed chords', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     final rollFinder = find.byWidgetPredicate(
@@ -367,12 +380,21 @@ void main() {
 
     final notes = painter().scene.project.track.notes;
     for (final bar in [0, 16, 32]) {
-      expect(notes.where((n) => n.start == bar), isNotEmpty,
-          reason: 'downstroke in bar at $bar');
-      expect(notes.where((n) => n.start == bar + 1), isEmpty,
-          reason: 'rest in bar at $bar');
-      expect(notes.where((n) => n.start == bar + 2), isNotEmpty,
-          reason: 'upstroke in bar at $bar');
+      expect(
+        notes.where((n) => n.start == bar),
+        isNotEmpty,
+        reason: 'downstroke in bar at $bar',
+      );
+      expect(
+        notes.where((n) => n.start == bar + 1),
+        isEmpty,
+        reason: 'rest in bar at $bar',
+      );
+      expect(
+        notes.where((n) => n.start == bar + 2),
+        isNotEmpty,
+        reason: 'upstroke in bar at $bar',
+      );
     }
     expect(painter().scene.mode.label, 'NORMAL');
   });
@@ -459,8 +481,9 @@ void main() {
     expect(notes.where((n) => n.pitch == 67 && n.start == 0), hasLength(1));
   });
 
-  testWidgets('i on a selection cycles the note value (4 -> 8 steps)',
-      (tester) async {
+  testWidgets('i on a selection cycles the note value (4 -> 8 steps)', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     final rollFinder = find.byWidgetPredicate(
@@ -471,8 +494,9 @@ void main() {
 
     // The demo song no longer writes notes for you: put a 1/4 note on the
     // home cell so there is something for CTRL to grab.
-    painter().scene.project.track.notes
-        .add(Note(pitch: 60, start: 0, len: 4, vel: 100));
+    painter().scene.project.track.notes.add(
+      Note(pitch: 60, start: 0, len: 4, vel: 100),
+    );
 
     // CTRL-tap grabs the note under the cursor (C4, len 4 = 1/4 note).
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
@@ -496,19 +520,22 @@ void main() {
         tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
 
     // The grid starts empty: drop the note this test lengthens.
-    painter().scene.project.track.notes
-        .add(Note(pitch: 60, start: 0, len: 4, vel: 100));
-    final before =
-        painter().scene.project.noteAt(60, 0)!.len;
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.bracketRight,
-        character: ']');
+    painter().scene.project.track.notes.add(
+      Note(pitch: 60, start: 0, len: 4, vel: 100),
+    );
+    final before = painter().scene.project.noteAt(60, 0)!.len;
+    await tester.sendKeyDownEvent(
+      LogicalKeyboardKey.bracketRight,
+      character: ']',
+    );
     await tester.pump();
     final after = painter().scene.project.noteAt(60, 0)!.len;
     expect(after, before + 1);
   });
 
-  testWidgets('the roll fills the space between the chrome bars',
-      (tester) async {
+  testWidgets('the roll fills the space between the chrome bars', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -531,13 +558,13 @@ void main() {
     expect(scene.layout.cols, greaterThan(0));
   });
 
-  testWidgets('accessory strip and command line render without error',
-      (tester) async {
+  testWidgets('accessory strip and command line render without error', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     // ':' enters command mode; type a character then run it.
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.semicolon,
-        character: ':');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.semicolon, character: ':');
     await tester.pump();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.keyH, character: 'h');
     await tester.pump();
@@ -546,8 +573,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('instrument browser: j moves and i loads onto the track',
-      (tester) async {
+  testWidgets('instrument browser: j moves and i loads onto the track', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -578,8 +606,9 @@ void main() {
     expect(browser().activeProgram, program);
   });
 
-  testWidgets('automation: i writes a breakpoint, d removes it',
-      (tester) async {
+  testWidgets('automation: i writes a breakpoint, d removes it', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -613,7 +642,57 @@ void main() {
     expect(auto().lanes[lane].points, isEmpty);
   });
 
-  testWidgets('space toggles play/pause; quick re-press while stopped restarts from bar 1', (tester) async {
+  testWidgets(
+    'space toggles play/pause; quick re-press while stopped restarts from bar 1',
+    (tester) async {
+      await tester.pumpWidget(const VimDawApp());
+      await tester.pump();
+
+      final rollFinder = find.byWidgetPredicate(
+        (w) => w is CustomPaint && w.painter is PianoRollPainter,
+      );
+      PianoRollPainter painter() =>
+          tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+
+      expect(painter().scene.playCol, 0);
+      expect(painter().scene.isPlaying, false);
+
+      // Single space starts playback.
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(painter().scene.isPlaying, true);
+
+      // One step elapses (stepMs = 60000/120/4 = 125ms).
+      await tester.pump(const Duration(milliseconds: 130));
+      expect(painter().scene.playCol, 1);
+
+      // Space pauses, keeping the position.
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(painter().scene.isPlaying, false);
+      expect(painter().scene.playCol, 1);
+
+      // A quick re-press while stopped restarts from bar 1 (step 0).
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(painter().scene.isPlaying, true);
+      expect(painter().scene.playCol, 0);
+
+      // Playback advances again.
+      await tester.pump(const Duration(milliseconds: 130));
+      expect(painter().scene.playCol, 1);
+
+      // Pause so no periodic timer is left pending.
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(painter().scene.isPlaying, false);
+      expect(painter().scene.playCol, 1);
+    },
+  );
+
+  testWidgets('colon enters the command line even without a character', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -623,43 +702,18 @@ void main() {
     PianoRollPainter painter() =>
         tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
 
-    expect(painter().scene.playCol, 0);
-    expect(painter().scene.isPlaying, false);
-
-    // Single space starts playback.
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.pump();
-    expect(painter().scene.isPlaying, true);
-
-    // One step elapses (stepMs = 60000/120/4 = 125ms).
-    await tester.pump(const Duration(milliseconds: 130));
-    expect(painter().scene.playCol, 1);
-
-    // Space pauses, keeping the position.
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.semicolon);
     await tester.pump();
-    expect(painter().scene.isPlaying, false);
-    expect(painter().scene.playCol, 1);
-
-    // A quick re-press while stopped restarts from bar 1 (step 0).
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.semicolon);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     await tester.pump();
-    expect(painter().scene.isPlaying, true);
-    expect(painter().scene.playCol, 0);
 
-    // Playback advances again.
-    await tester.pump(const Duration(milliseconds: 130));
-    expect(painter().scene.playCol, 1);
-
-    // Pause so no periodic timer is left pending.
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
-    await tester.pump();
-    expect(painter().scene.isPlaying, false);
-    expect(painter().scene.playCol, 1);
+    expect(painter().scene.mode.label, 'COMMAND');
   });
 
-  testWidgets('roll touch: double-tap adds/selects, long-press deletes',
-      (tester) async {
+  testWidgets('ctrl+d deletes the selected notes', (tester) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -671,7 +725,49 @@ void main() {
 
     final origin = tester.getTopLeft(rollFinder);
     final l = painter().scene.layout;
-    Offset cell(int pitch, int col) => origin +
+    Offset cell(int pitch, int col) =>
+        origin +
+        Offset(
+          l.xForCol(col) + RollLayout.cellW / 2,
+          l.yForPitch(pitch) + RollLayout.cellH / 2,
+        );
+
+    final first = await tester.startGesture(cell(60, 0));
+    await first.up();
+    await tester.pump(const Duration(milliseconds: 40));
+    final second = await tester.startGesture(cell(60, 0));
+    await second.up();
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(painter().scene.project.track.notes, hasLength(1));
+    expect(painter().scene.project.selection, isNotEmpty);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyD);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyD);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(painter().scene.project.track.notes, isEmpty);
+  });
+
+  testWidgets('roll touch: double-tap adds/selects, long-press deletes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+
+    final origin = tester.getTopLeft(rollFinder);
+    final l = painter().scene.layout;
+    Offset cell(int pitch, int col) =>
+        origin +
         Offset(
           l.xForCol(col) + RollLayout.cellW / 2,
           l.yForPitch(pitch) + RollLayout.cellH / 2,
@@ -709,8 +805,9 @@ void main() {
     expect(painter().scene.project.noteAt(61, 0), isNull);
   });
 
-  testWidgets('roll touch: a double-tap-selected note can be dragged',
-      (tester) async {
+  testWidgets('roll touch: a double-tap-selected note can be dragged', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -722,7 +819,8 @@ void main() {
 
     final origin = tester.getTopLeft(rollFinder);
     final l = painter().scene.layout;
-    Offset cell(int pitch, int col) => origin +
+    Offset cell(int pitch, int col) =>
+        origin +
         Offset(
           l.xForCol(col) + RollLayout.cellW / 2,
           l.yForPitch(pitch) + RollLayout.cellH / 2,
@@ -748,10 +846,7 @@ void main() {
     // Dragging an unselected note must not move it.
     expect(painter().scene.project.selection.contains(note), isFalse);
     final idle = await tester.startGesture(cell(60, 0));
-    await idle.moveBy(Offset(
-      2.0 * RollLayout.cellW,
-      -2.0 * RollLayout.cellH,
-    ));
+    await idle.moveBy(Offset(2.0 * RollLayout.cellW, -2.0 * RollLayout.cellH));
     await idle.up();
     await tester.pump();
     expect(note.pitch, beforePitch);
@@ -763,10 +858,7 @@ void main() {
     // Drag up and to the right: the selected note follows the finger.
     final drag = await tester.startGesture(cell(60, 0));
     await tester.pump();
-    await drag.moveBy(Offset(
-      2.0 * RollLayout.cellW,
-      -2.0 * RollLayout.cellH,
-    ));
+    await drag.moveBy(Offset(2.0 * RollLayout.cellW, -2.0 * RollLayout.cellH));
     await tester.pump();
     await drag.up();
     await tester.pump();
@@ -788,7 +880,8 @@ void main() {
 
     final origin = tester.getTopLeft(rollFinder);
     final l = painter().scene.layout;
-    Offset cell(int pitch, int col) => origin +
+    Offset cell(int pitch, int col) =>
+        origin +
         Offset(
           l.xForCol(col) + RollLayout.cellW / 2,
           l.yForPitch(pitch) + RollLayout.cellH / 2,
@@ -807,7 +900,9 @@ void main() {
     expect(painter().scene.project.noteAt(67, 0), isNotNull);
   });
 
-  testWidgets('roll touch: dragging the edges scrolls the view', (tester) async {
+  testWidgets('roll touch: dragging the edges scrolls the view', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -842,8 +937,9 @@ void main() {
     expect(painter().scene.layout.viewCol, col + 2);
   });
 
-  testWidgets('arrange touch: tap selects, double-tap opens the roll',
-      (tester) async {
+  testWidgets('arrange touch: tap selects, double-tap opens the roll', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -897,81 +993,102 @@ void main() {
     expect(scene.pointer.col, 0);
   });
 
-  testWidgets('drum machine: taps place hits and pads drive the cursor',
-      (tester) async {
-    // The drum tab sits directly after the roll tab.
-    expect(ViewMode.values.take(2), [ViewMode.roll, ViewMode.drumMachine]);
+  testWidgets(
+    'drum machine: double-taps place hits and pads drive the cursor',
+    (tester) async {
+      // The drum tab sits directly after the roll tab.
+      expect(ViewMode.values.take(2), [ViewMode.roll, ViewMode.drumMachine]);
 
-    await tester.pumpWidget(const VimDawApp());
-    await tester.pump();
+      await tester.pumpWidget(const VimDawApp());
+      await tester.pump();
 
-    // Ctrl+2 opens the drum machine tab.
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-    await tester.pump();
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.digit2);
-    await tester.pump();
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.digit2);
-    await tester.pump();
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-    await tester.pump();
+      // Ctrl+2 opens the drum machine tab.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.digit2);
+      await tester.pump();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.digit2);
+      await tester.pump();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
 
-    expect(find.text('DRUMS'), findsOneWidget);
-    final gridFinder = find.byWidgetPredicate(
-      (w) => w is CustomPaint && w.painter is DrumMachinePainter,
-    );
-    expect(gridFinder, findsOneWidget);
+      expect(find.text('DRUMS'), findsOneWidget);
+      final gridFinder = find.byWidgetPredicate(
+        (w) => w is CustomPaint && w.painter is DrumMachinePainter,
+      );
+      expect(gridFinder, findsOneWidget);
 
-    DrumMachinePainter painter() =>
-        tester.widget<CustomPaint>(gridFinder).painter! as DrumMachinePainter;
-    final origin = tester.getTopLeft(gridFinder);
-    final l = painter().scene.layout;
-    Offset cell(int row, int col) => origin +
-        Offset(
-          l.xForCol(col) + RollLayout.cellW / 2,
-          l.gridY + row * RollLayout.cellH + RollLayout.cellH / 2,
-        );
+      DrumMachinePainter painter() =>
+          tester.widget<CustomPaint>(gridFinder).painter! as DrumMachinePainter;
+      final origin = tester.getTopLeft(gridFinder);
+      final l = painter().scene.layout;
+      Offset cell(int row, int col) =>
+          origin +
+          Offset(
+            l.xForCol(col) + RollLayout.cellW / 2,
+            l.gridY + row * RollLayout.cellH + RollLayout.cellH / 2,
+          );
 
-    // Tap the first pad row on the first step: the kick lands and the track
-    // becomes a GM drum track so playback agrees.
-    await tester.tapAt(cell(0, 0));
-    await tester.pump();
-    final kick = painter().scene.pads[0].pitch;
-    expect(painter().scene.project.noteAt(kick, 0), isNotNull);
-    expect(painter().scene.project.track.channel, 9);
+      Future<void> doubleTap(Offset p) async {
+        final first = await tester.startGesture(p);
+        await first.up();
+        await tester.pump(const Duration(milliseconds: 40));
+        final second = await tester.startGesture(p);
+        await second.up();
+        await tester.pump(const Duration(milliseconds: 450));
+      }
 
-    // Tapping the same cell again takes the hit back out.
-    await tester.tapAt(cell(0, 0));
-    await tester.pump();
-    expect(painter().scene.project.noteAt(kick, 0), isNull);
+      // A single tap only moves the cursor.
+      await tester.tapAt(cell(0, 0));
+      await tester.pump();
+      final kick = painter().scene.pads[0].pitch;
+      expect(painter().scene.project.noteAt(kick, 0), isNull);
+      expect(painter().scene.cursorPad, 0);
+      expect(painter().scene.pointer.col, 0);
+      await tester.pump(const Duration(milliseconds: 450));
 
-    // Tapping a sound name selects that row.
-    await tester.tapAt(origin +
-        Offset(
-          l.gutterW / 2,
-          l.gridY + 1 * RollLayout.cellH + RollLayout.cellH / 2,
-        ));
-    await tester.pump();
-    expect(painter().scene.cursorPad, 1);
-    expect(painter().scene.pointer.pitch, painter().scene.pads[1].pitch);
+      // Double-tap the first pad row on the first step: the kick lands and the
+      // track becomes a GM drum track so playback agrees.
+      await doubleTap(cell(0, 0));
+      expect(painter().scene.project.noteAt(kick, 0), isNotNull);
+      expect(painter().scene.project.track.channel, 9);
 
-    // Keyboard: i drops a hit, d removes it, j walks down a pad.
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
-    await tester.pump();
-    final snare = painter().scene.pads[1].pitch;
-    expect(painter().scene.project.noteAt(snare, 0), isNotNull);
+      // Double-tapping the same cell again takes the hit back out.
+      await doubleTap(cell(0, 0));
+      expect(painter().scene.project.noteAt(kick, 0), isNull);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
-    await tester.pump();
-    expect(painter().scene.project.noteAt(snare, 0), isNull);
+      // Tapping a sound name selects that row.
+      await tester.tapAt(
+        origin +
+            Offset(
+              l.gutterW / 2,
+              l.gridY + 1 * RollLayout.cellH + RollLayout.cellH / 2,
+            ),
+      );
+      await tester.pump();
+      expect(painter().scene.cursorPad, 1);
+      expect(painter().scene.pointer.pitch, painter().scene.pads[1].pitch);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
-    await tester.pump();
-    expect(painter().scene.cursorPad, 2);
-    expect(painter().scene.pointer.pitch, painter().scene.pads[2].pitch);
-  });
+      // Keyboard: i drops a hit, d removes it, j walks down a pad.
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+      await tester.pump();
+      final snare = painter().scene.pads[1].pitch;
+      expect(painter().scene.project.noteAt(snare, 0), isNotNull);
 
-  testWidgets('drum machine: + SOUND adds a sound from the GM kit',
-      (tester) async {
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+      await tester.pump();
+      expect(painter().scene.project.noteAt(snare, 0), isNull);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+      await tester.pump();
+      expect(painter().scene.cursorPad, 2);
+      expect(painter().scene.pointer.pitch, painter().scene.pads[2].pitch);
+    },
+  );
+
+  testWidgets('drum machine: + SOUND adds a sound from the GM kit', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
@@ -1002,14 +1119,14 @@ void main() {
     // Let the dialog finish closing so only the pad row is left.
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(painter().scene.pads.map((p) => p.name),
-        contains('SIDE STICK'));
+    expect(painter().scene.pads.map((p) => p.name), contains('SIDE STICK'));
     expect(find.text('SIDE STICK'), findsOneWidget);
     expect(find.text('ADD SOUND'), findsNothing);
   });
 
-  testWidgets('toolbar instrument chip opens a picker and loads a sound',
-      (tester) async {
+  testWidgets('toolbar instrument chip opens a picker and loads a sound', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     final rollFinder = find.byWidgetPredicate(
@@ -1038,12 +1155,12 @@ void main() {
     expect(project.track.instrument, 80);
     expect(find.text('INSTRUMENT'), findsNothing);
     expect(find.text('Lead 1 (square)'), findsWidgets);
-    expect(
-        find.text('inst Lead 1 (square) (program 81)'), findsOneWidget);
+    expect(find.text('inst Lead 1 (square) (program 81)'), findsOneWidget);
   });
 
-  testWidgets('play schedules the project notes into the engine',
-      (tester) async {
+  testWidgets('play schedules the project notes into the engine', (
+    tester,
+  ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
     final rollFinder = find.byWidgetPredicate(

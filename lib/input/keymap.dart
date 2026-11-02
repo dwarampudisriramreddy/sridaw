@@ -102,6 +102,7 @@ class Keymap {
       return switch (key) {
         LogicalKeyboardKey.space => DawAction.playPause,
         LogicalKeyboardKey.keyA => DawAction.selectAll,
+        LogicalKeyboardKey.keyD => DawAction.deleteSelection,
         LogicalKeyboardKey.keyR => DawAction.redo,
         // `2` is free: the pattern tab was removed, now it opens the drum machine.
         LogicalKeyboardKey.digit1 => DawAction.viewRoll,
@@ -128,7 +129,12 @@ class Keymap {
     if (key == LogicalKeyboardKey.enter) return DawAction.playPause;
     if (key == LogicalKeyboardKey.period) return DawAction.stop;
 
-    // Enter command line via ':'.
+    // Enter command line via ':'. Some platforms leave `character` empty for
+    // shifted punctuation, so also resolve the logical key.
+    if (key == LogicalKeyboardKey.colon) return DawAction.enterCommand;
+    if (key == LogicalKeyboardKey.semicolon && shift) {
+      return DawAction.enterCommand;
+    }
     if (ch == ':') return DawAction.enterCommand;
 
     // Arrow keys for spatial focus navigation (when not moving pointer).
@@ -243,7 +249,8 @@ class Keymap {
   static int? countDigit(KeyEvent event) {
     if (event is! KeyDownEvent) return null;
     final kb = HardwareKeyboard.instance;
-    if (kb.isControlPressed || kb.isAltPressed || kb.isShiftPressed) return null;
+    if (kb.isControlPressed || kb.isAltPressed || kb.isShiftPressed)
+      return null;
     return _digits[event.logicalKey];
   }
 
