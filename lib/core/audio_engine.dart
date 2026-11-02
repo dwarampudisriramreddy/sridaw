@@ -23,7 +23,9 @@ class DawAudioEngine {
       final bridge = AudioEngineBridge();
       _bridge = bridge;
       _available = bridge.initialize();
-    } catch (_) {
+      debugPrint('audio engine available=$_available');
+    } catch (e) {
+      debugPrint('audio engine init failed: $e');
       _bridge = null;
       _available = false;
     }
@@ -39,14 +41,22 @@ class DawAudioEngine {
     try {
       final path = await const MethodChannel('com.ram.sridaw/assets')
           .invokeMethod<String>('extractSoundFont');
-      if (path != null) loadSoundFont(path);
+      debugPrint('extractSoundFont path=$path');
+      if (path != null) {
+        loadSoundFont(path);
+        debugPrint('soundFontLoaded=${soundFontLoaded} path=${soundFontPath}');
+      }
     } catch (_) {}
   }
 
   void loadSoundFont(String path) {
+    debugPrint('loadSoundFont $path');
     try {
       _bridge?.loadSoundFont(path);
-    } catch (_) {}
+      debugPrint('soundFontLoaded=${_bridge?.isSoundFontLoaded()}');
+    } catch (e) {
+      debugPrint('loadSoundFont failed: $e');
+    }
   }
 
   bool get soundFontLoaded {

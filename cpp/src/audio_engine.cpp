@@ -34,7 +34,14 @@ bool AudioEngine::initialize() {
     }
     
     mainGraph->clear();
-    
+
+    // The graph's I/O processors take their bus layout from the graph at the
+    // moment they are added. AudioProcessorGraph starts with zero channels, so
+    // without this the audio output node has no input channels and JUCE
+    // silently rejects every synth -> output connection, leaving the engine
+    // "ready" but silent. Configure the channels before building the graph.
+    mainGraph->setPlayConfigDetails(0, 2, sampleRate, 512);
+
     audioOutputNode = mainGraph->addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(juce::AudioProcessorGraph::AudioGraphIOProcessor::audioOutputNode));
     midiInputNode = mainGraph->addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(juce::AudioProcessorGraph::AudioGraphIOProcessor::midiInputNode));
     
@@ -44,13 +51,18 @@ bool AudioEngine::initialize() {
     gmSynthNode = mainGraph->addNode(std::move(gmSynth));
     
     // Connect MIDI Input -> GM Synth MIDI Input
-    mainGraph->addConnection({ { midiInputNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
-                               { gmSynthNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
+    if (!mainGraph->addConnection({ { midiInputNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
+                                    { gmSynthNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex } })) {
+        std::cerr << "[SriDAW] Failed to connect MIDI input to GM synth" << std::endl;
+    }
                                
     // Connect GM Synth Audio Output -> Master Output
     for (int ch = 0; ch < 2; ++ch) {
-        mainGraph->addConnection({ { gmSynthNode->nodeID, ch },
-                                   { audioOutputNode->nodeID, ch } });
+        if (!mainGraph->addConnection({ { gmSynthNode->nodeID, ch },
+                                        { audioOutputNode->nodeID, ch } })) {
+            std::cerr << "[SriDAW] Failed to connect GM synth channel " << ch
+                      << " to master output" << std::endl;
+        }
     }
     
     deviceManager->addAudioCallback(this);

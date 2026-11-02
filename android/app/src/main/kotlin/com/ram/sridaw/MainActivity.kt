@@ -5,14 +5,11 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.os.Bundle
 import android.util.Log
-import android.view.KeyEvent
 import java.io.File
 import java.io.FileOutputStream
 import java.io.FileWriter
 
 class MainActivity : FlutterActivity() {
-
-    private var keyChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -36,30 +33,6 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
-
-        // Hardware volume keys never reach Flutter (the system consumes them
-        // before the Activity sees them), so forward them explicitly.
-        keyChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.ram.sridaw/keys").also { channel ->
-            channel.setMethodCallHandler { _, result -> result.notImplemented() }
-        }
-    }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            keyChannel?.invokeMethod(
-                "volumeKey",
-                if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) "up" else "down"
-            )
-            return true
-        }
-        return super.onKeyDown(keyCode, event)
-    }
-
-    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            return true
-        }
-        return super.onKeyUp(keyCode, event)
     }
 
     companion object {
