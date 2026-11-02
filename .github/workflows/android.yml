@@ -1,0 +1,73 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    name: Build Flutter APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          
+      # Needed for C++ / JUCE FFI build
+      - name: Set up CMake & Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install Ninja
+        run: sudo apt-get install ninja-build
+
+      - name: Install JUCE Linux Dependencies
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libx11-dev libxinerama-dev libxext-dev libfreetype6-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev libjack-jackd2-dev libcurl4-openssl-dev
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze (fail fast on compile errors)
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
+
+  - name: Build release APK
+    run: flutter build apk --release
+
+  - name: Build debug APK (for crash logging / adb logcat)
+    run: flutter build apk --debug
+
+  - name: Verify native library is packaged (release)
+    run: |
+      unzip -l build/app/outputs/flutter-apk/app-release.apk | grep -i "lib/.*/libsridaw_juce.so" || (echo "ERROR: libsridaw_juce.so NOT found in APK - native engine missing, app will crash at System.loadLibrary" && exit 1)
+
+  - name: Check JUCE JNI symbol exists in native lib
+    run: |
+      unzip -p build/app/outputs/flutter-apk/app-release.apk lib/arm64-v8a/libsridaw_juce.so > /tmp/sridaw.so
+      strings /tmp/sridaw.so | grep -i "Java_com_ram_sridaw_MainActivity_initJuceJNI" && echo "JNI symbol found" || echo "WARNING: initJuceJNI symbol not found (removed JNI path)"
+
+  - name: Upload release APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: app-release
+      path: build/app/outputs/flutter-apk/app-release.apk
+
+  - name: Upload debug APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: app-debug
+      path: build/app/outputs/flutter-apk/app-debug.apk
