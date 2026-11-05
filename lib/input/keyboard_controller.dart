@@ -156,9 +156,18 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
                   smartQuotesType: SmartQuotesType.disabled,
                   textCapitalization: TextCapitalization.none,
                   maxLines: 1,
-                  textInputAction: TextInputAction.done,
+                  textInputAction: TextInputAction.newline,
                   onChanged: (_) {},
-                  onSubmitted: (_) => widget.onSubmit?.call(),
+                  // Keep the input connection alive after the Done action.
+                  onEditingComplete: () {},
+                  onSubmitted: (_) {
+                    widget.onSubmit?.call();
+                    // Some Android IMEs hide after Done even when focus is
+                    // retained, so ask for the keyboard again after the frame.
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _refocus(),
+                    );
+                  },
                 ),
               ),
             ),

@@ -969,10 +969,11 @@ void main() {
     await tester.pump();
     expect(painter().scene.mode.label, 'COMMAND');
 
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.testTextInput.receiveAction(TextInputAction.newline);
     await tester.pump();
     expect(project.bpm, 140);
     expect(painter().scene.mode.label, 'NORMAL');
+    expect(tester.testTextInput.hasAnyClients, isTrue);
 
     await tester.enterText(editable, ':strum i,vi,v d-dxu-du');
     await tester.pump();
