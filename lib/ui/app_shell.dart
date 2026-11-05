@@ -489,8 +489,22 @@ class _AppShellState extends State<AppShell> {
   /// single-character keymap the hardware path uses, so `h j k l`, `w b`,
   /// counts, etc. work identically on touch devices.
   void _onText(String text) {
+    if (text.isEmpty) return;
     if (_pointer.mode == InputMode.command) {
+      final lineBreak = text.indexOf(RegExp(r'[\r\n]'));
+      if (lineBreak >= 0) {
+        final before = text.substring(0, lineBreak);
+        if (before.isNotEmpty) _commandBuffer += before;
+        _runCommand(_commandBuffer);
+        return;
+      }
       setState(() => _commandBuffer += text);
+      return;
+    }
+    if (text.length > 1) {
+      for (final ch in text.split('')) {
+        if (ch.isNotEmpty) _onText(ch);
+      }
       return;
     }
     if (text == ' ') {
@@ -504,15 +518,21 @@ class _AppShellState extends State<AppShell> {
       _applyChordKey(shape);
       return;
     }
-    for (final ch in text.split('')) {
-      final digit = int.tryParse(ch);
-      if (digit != null) {
-        _typeDigit(digit);
-        continue;
-      }
-      final action = Keymap.resolveChar(ch);
-      _setShowCmd(_displayFor(action, ch));
-      if (action != null) _handleAction(action);
+    final digit = int.tryParse(text);
+    if (digit != null) {
+      _typeDigit(digit);
+      return;
+    }
+    final action = Keymap.resolveChar(text);
+    _setShowCmd(_displayFor(action, text));
+    if (action != null) _handleAction(action);
+  }
+
+  void _onTextSubmit() {
+    if (_pointer.mode == InputMode.command) {
+      _runCommand(_commandBuffer);
+    } else if (!_chordPending) {
+      _handleAction(DawAction.playPause);
     }
   }
 
@@ -1298,6 +1318,7 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _pointer.pitch = nPitch;
       _pointer.col = nCol;
+      if (_boxSelecting) _updateSelection();
       _revision++;
     });
     _audio.previewNote(nPitch, velocity: 90, channel: _previewChannel);
@@ -1394,6 +1415,7 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _pointer.pitch = _snapPitch(pitch);
       _pointer.col = col.clamp(0, _project.totalSteps - 1);
+      if (_boxSelecting) _updateSelection();
       if (_pointer.mode == InputMode.draw) {
         _pushUndo();
         _addNote(_pointer.pitch, _pointer.col);
@@ -1584,13 +1606,18 @@ class _AppShellState extends State<AppShell> {
     _pushUndo();
     setState(() {
       if (_project.selection.isNotEmpty) {
+        final count = _project.selection.length;
         _project.track.notes.removeWhere(_project.selection.contains);
-        _status = 'deleted ${_project.selection.length} note(s)';
+        _status = 'deleted $count note(s)';
         _project.selection.clear();
       } else {
         _eraseAt(_pointer.pitch, _pointer.col);
         _status = 'deleted note';
       }
+      _boxAnchor = null;
+      _boxSelecting = false;
+      _grabNotes.clear();
+      _grabUndoPushed = false;
       _statusError = false;
       _revision++;
     });
@@ -1640,6 +1667,10 @@ class _AppShellState extends State<AppShell> {
       } else if (src.isNotEmpty) {
         _project.track.notes.remove(src.first);
       }
+      _boxAnchor = null;
+      _boxSelecting = false;
+      _grabNotes.clear();
+      _grabUndoPushed = false;
       _status = 'cut ${_yank.length} note(s)';
       _statusError = false;
       _revision++;
@@ -3245,6 +3276,7 @@ class _AppShellState extends State<AppShell> {
       child: AlwaysOnKeyboard(
         onKey: _onKey,
         onText: _onText,
+        onSubmit: _onTextSubmit,
         child: Material(
           type: MaterialType.transparency,
           child: ColoredBox(

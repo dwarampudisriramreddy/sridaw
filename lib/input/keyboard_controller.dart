@@ -16,12 +16,14 @@ class AlwaysOnKeyboard extends StatefulWidget {
   final Widget child;
   final bool Function(KeyEvent event) onKey;
   final void Function(String text) onText;
+  final VoidCallback? onSubmit;
 
   const AlwaysOnKeyboard({
     super.key,
     required this.child,
     required this.onKey,
     required this.onText,
+    this.onSubmit,
   });
 
   @override
@@ -154,7 +156,9 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
                   smartQuotesType: SmartQuotesType.disabled,
                   textCapitalization: TextCapitalization.none,
                   maxLines: 1,
+                  textInputAction: TextInputAction.done,
                   onChanged: (_) {},
+                  onSubmitted: (_) => widget.onSubmit?.call(),
                 ),
               ),
             ),

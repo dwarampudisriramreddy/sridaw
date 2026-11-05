@@ -173,6 +173,69 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('CTRL box select deletes every note in the box with d or x', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+    final project = painter().scene.project;
+
+    Future<void> ctrlTap() async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+    }
+
+    project.track.notes.addAll([
+      Note(pitch: 60, start: 0, len: 1, vel: 100),
+      Note(pitch: 61, start: 0, len: 1, vel: 100),
+    ]);
+
+    // Move above the notes, start a box, then pull it back down over both.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await ctrlTap();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.pump();
+
+    expect(project.selection, hasLength(2));
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+    await tester.pump();
+    expect(project.track.notes, isEmpty);
+    expect(painter().scene.boxAnchor, isNull);
+
+    project.track.notes.addAll([
+      Note(pitch: 60, start: 0, len: 1, vel: 100),
+      Note(pitch: 61, start: 0, len: 1, vel: 100),
+    ]);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await ctrlTap();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.pump();
+
+    expect(project.selection, hasLength(2));
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyX);
+    await tester.pump();
+    expect(project.track.notes, isEmpty);
+    expect(painter().scene.boxAnchor, isNull);
+  });
+
   const charKeys = <String, LogicalKeyboardKey>{
     ' ': LogicalKeyboardKey.space,
     'a': LogicalKeyboardKey.keyA,
@@ -499,6 +562,35 @@ void main() {
       );
     }
     expect(painter().scene.mode.label, 'NORMAL');
+  });
+
+  testWidgets('strum command handles a spaced progression and mixed pattern', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+
+    await runCommand(tester, 'strum i vi v d-dxu-du');
+
+    final notes = painter().scene.project.track.notes;
+    expect(notes, isNotEmpty);
+    for (final bar in [0, 16, 32]) {
+      expect(
+        notes.where((n) => n.start == bar),
+        isNotEmpty,
+        reason: 'downstroke in bar at $bar',
+      );
+      expect(
+        notes.where((n) => n.start == bar + 1),
+        isEmpty,
+        reason: 'rest in bar at $bar',
+      );
+    }
   });
 
   testWidgets('ctrl+a selects every note and x cuts them', (tester) async {
@@ -859,6 +951,36 @@ void main() {
     await tester.pump();
 
     expect(painter().scene.mode.label, 'COMMAND');
+  });
+
+  testWidgets('soft keyboard text runs commands on submit', (tester) async {
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+    final project = painter().scene.project;
+    final editable = find.byType(EditableText);
+
+    await tester.enterText(editable, ':bpm 140');
+    await tester.pump();
+    expect(painter().scene.mode.label, 'COMMAND');
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(project.bpm, 140);
+    expect(painter().scene.mode.label, 'NORMAL');
+
+    await tester.enterText(editable, ':strum i,vi,v d-dxu-du');
+    await tester.pump();
+    expect(painter().scene.mode.label, 'COMMAND');
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(project.track.notes, isNotEmpty);
   });
 
   testWidgets('ctrl+d deletes the selected notes', (tester) async {
