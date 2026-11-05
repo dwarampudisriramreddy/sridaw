@@ -66,6 +66,17 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     }
   }
 
+  @override
+  void didChangeMetrics() {
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final ratio = view.devicePixelRatio;
+    final inset = ratio == 0 ? 0.0 : view.viewInsets.bottom / ratio;
+    AppLog.instance.debug(
+      'IME',
+      'metrics keyboardInset=${inset.toStringAsFixed(1)}',
+    );
+  }
+
   void _refocus() {
     if (!mounted) return;
     final hadFocus = _focus.hasFocus;
@@ -73,12 +84,18 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     if (!hadFocus && !otherField) {
       _focus.requestFocus();
     }
-    // On mobile, focusing programmatically does not always pop the IME up
-    // (notably right after startup), so ask for it explicitly.
-    if (defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS) {
-      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-    }
+    // Focus is often requested while the hidden editor is still waiting for
+    // its first layout. Showing the IME before that triggers Android's
+    // "RenderEditable has no size" path, and Gboard can stay disconnected.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focus.hasFocus) return;
+      // On mobile, focusing programmatically does not always pop the IME up
+      // (notably right after startup), so ask for it explicitly.
+      if (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS) {
+        SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+      }
+    });
     AppLog.instance.debug(
       'IME',
       'refocus hadFocus=$hadFocus otherField=$otherField '
@@ -187,11 +204,11 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
                 cursorColor: const Color(0x00000000),
                 backgroundCursorColor: const Color(0x00000000),
                 showCursor: false,
-                autofocus: true,
                 keyboardType: TextInputType.text,
                 autocorrect: false,
                 enableSuggestions: false,
                 enableIMEPersonalizedLearning: false,
+                enableInteractiveSelection: false,
                 smartDashesType: SmartDashesType.disabled,
                 smartQuotesType: SmartQuotesType.disabled,
                 textCapitalization: TextCapitalization.none,
