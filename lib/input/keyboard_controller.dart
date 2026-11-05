@@ -34,7 +34,7 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     with WidgetsBindingObserver {
   final FocusNode _focus = FocusNode(debugLabel: 'daw-always-on');
   final TextEditingController _controller = TextEditingController();
-  bool _suppressText = false;
+  String _lastText = '';
 
   @override
   void initState() {
@@ -118,13 +118,25 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
   }
 
   void _handleText() {
-    if (_suppressText) return;
     final text = _controller.text;
-    if (text.isEmpty) return;
-    _suppressText = true;
-    _controller.clear();
-    _suppressText = false;
-    widget.onText(text);
+    if (text == _lastText) return;
+
+    // Never clear the controller from inside its listener: Gboard tries to
+    // restore the composing region and can end up in a loop where no keys
+    // reach the app. Keep the hidden buffer and forward only new characters.
+    if (text.startsWith(_lastText)) {
+      final delta = text.substring(_lastText.length);
+      _lastText = text;
+      if (delta.isNotEmpty) widget.onText(delta);
+      return;
+    }
+    if (_lastText.startsWith(text)) {
+      // A deletion/backspace from the IME; no new character to forward.
+      _lastText = text;
+      return;
+    }
+    _lastText = text;
+    if (text.isNotEmpty) widget.onText(text);
   }
 
   @override

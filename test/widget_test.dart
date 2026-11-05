@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:sridaw/input/daw_input.dart';
+import 'package:sridaw/input/keyboard_controller.dart';
 import 'package:sridaw/main.dart';
 import 'package:sridaw/model/gm_instruments.dart';
 import 'package:sridaw/model/project.dart';
@@ -951,6 +952,42 @@ void main() {
     await tester.pump();
 
     expect(painter().scene.mode.label, 'COMMAND');
+  });
+
+  testWidgets('IME buffer forwards appended characters without clearing', (
+    tester,
+  ) async {
+    final received = <String>[];
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: AlwaysOnKeyboard(
+          onKey: (_) => false,
+          onText: received.add,
+          child: const SizedBox.expand(),
+        ),
+      ),
+    );
+    await tester.pump();
+    final editable = find.byType(EditableText);
+
+    await tester.enterText(editable, 'j');
+    await tester.pump();
+    await tester.enterText(editable, 'jk');
+    await tester.pump();
+    await tester.enterText(editable, 'jk:');
+    await tester.pump();
+    expect(received, ['j', 'k', ':']);
+
+    // Deleting from the IME must not replay the remaining text.
+    await tester.enterText(editable, 'jk');
+    await tester.pump();
+    expect(received, ['j', 'k', ':']);
+
+    // A platform replacement is forwarded as fresh input.
+    await tester.enterText(editable, 'x');
+    await tester.pump();
+    expect(received, ['j', 'k', ':', 'x']);
   });
 
   testWidgets('soft keyboard text runs commands on submit', (tester) async {
