@@ -173,46 +173,45 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Invisible IME sink. Kept at 1x1 so it never affects layout.
-        Align(
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-            width: 1,
-            height: 1,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: 0,
-                child: EditableText(
-                  controller: _controller,
-                  focusNode: _focus,
-                  style: const TextStyle(color: Color(0x00000000), fontSize: 1),
-                  cursorColor: const Color(0x00000000),
-                  backgroundCursorColor: const Color(0x00000000),
-                  showCursor: false,
-                  autofocus: true,
-                  keyboardType: TextInputType.visiblePassword,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  smartDashesType: SmartDashesType.disabled,
-                  smartQuotesType: SmartQuotesType.disabled,
-                  textCapitalization: TextCapitalization.none,
-                  maxLines: 1,
-                  textInputAction: TextInputAction.newline,
-                  onChanged: (_) {},
-                  // Keep the input connection alive after the Done action.
-                  onEditingComplete: () {
-                    AppLog.instance.debug('IME', 'editing complete');
-                  },
-                  onSubmitted: (_) {
-                    AppLog.instance.debug('IME', 'submitted');
-                    widget.onSubmit?.call();
-                    // Some Android IMEs hide after Done even when focus is
-                    // retained, so ask for the keyboard again after the frame.
-                    WidgetsBinding.instance.addPostFrameCallback(
-                      (_) => _refocus(),
-                    );
-                  },
-                ),
+        // Invisible IME sink. It must still get real constraints: a 1x1 box
+        // can leave RenderEditable without a size on Android, so Gboard opens
+        // but never delivers text.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: 0,
+              child: EditableText(
+                controller: _controller,
+                focusNode: _focus,
+                style: const TextStyle(color: Color(0x00000000), fontSize: 16),
+                cursorColor: const Color(0x00000000),
+                backgroundCursorColor: const Color(0x00000000),
+                showCursor: false,
+                autofocus: true,
+                keyboardType: TextInputType.text,
+                autocorrect: false,
+                enableSuggestions: false,
+                enableIMEPersonalizedLearning: false,
+                smartDashesType: SmartDashesType.disabled,
+                smartQuotesType: SmartQuotesType.disabled,
+                textCapitalization: TextCapitalization.none,
+                maxLines: 1,
+                textInputAction: TextInputAction.newline,
+                scrollPadding: EdgeInsets.zero,
+                onChanged: (_) {},
+                // Keep the input connection alive after the Done action.
+                onEditingComplete: () {
+                  AppLog.instance.debug('IME', 'editing complete');
+                },
+                onSubmitted: (_) {
+                  AppLog.instance.debug('IME', 'submitted');
+                  widget.onSubmit?.call();
+                  // Some Android IMEs hide after Done even when focus is
+                  // retained, so ask for the keyboard again after the frame.
+                  WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => _refocus(),
+                  );
+                },
               ),
             ),
           ),
