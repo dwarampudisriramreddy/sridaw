@@ -2,40 +2,42 @@
 /// input source (keyboard, mouse, touch, MIDI) ultimately drives.
 library;
 
-enum InputMode {
-  normal,
-  insert,
-  draw,
-  erase,
-  command,
-  piano,
-  replace,
-}
+enum InputMode { normal, insert, draw, erase, command, piano, replace }
 
 extension InputModeLabel on InputMode {
   String get label => switch (this) {
-        InputMode.normal => 'NORMAL',
-        InputMode.insert => 'INSERT',
-        InputMode.draw => 'DRAW',
-        InputMode.erase => 'ERASE',
-        InputMode.command => 'COMMAND',
-        InputMode.piano => 'PIANO',
-        InputMode.replace => 'REPLACE',
-      };
+    InputMode.normal => 'NORMAL',
+    InputMode.insert => 'INSERT',
+    InputMode.draw => 'DRAW',
+    InputMode.erase => 'ERASE',
+    InputMode.command => 'COMMAND',
+    InputMode.piano => 'PIANO',
+    InputMode.replace => 'REPLACE',
+  };
 }
 
-enum ViewMode { roll, drumMachine, arrangement, mixer, sample, automation, help }
+enum ViewMode {
+  roll,
+  drumMachine,
+  arrangement,
+  mixer,
+  sample,
+  automation,
+  help,
+  debug,
+}
 
 extension ViewModeLabel on ViewMode {
   String get label => switch (this) {
-        ViewMode.roll => 'ROLL',
-        ViewMode.drumMachine => 'DRUMS',
-        ViewMode.arrangement => 'ARRANGE',
-        ViewMode.mixer => 'MIXER',
-        ViewMode.sample => 'SAMPLE',
-        ViewMode.automation => 'AUTO',
-        ViewMode.help => 'HELP',
-      };
+    ViewMode.roll => 'ROLL',
+    ViewMode.drumMachine => 'DRUMS',
+    ViewMode.arrangement => 'ARRANGE',
+    ViewMode.mixer => 'MIXER',
+    ViewMode.sample => 'SAMPLE',
+    ViewMode.automation => 'AUTO',
+    ViewMode.help => 'HELP',
+    ViewMode.debug => 'DEBUG',
+  };
 }
 
 /// The single source of truth for "where am I" on the grid.
@@ -58,8 +60,8 @@ class GridPointer {
   String? pending;
 
   GridPointer({this.pitch = 60, this.col = 0, this.mode = InputMode.normal})
-      : count = '',
-        pending = null;
+    : count = '',
+      pending = null;
 
   bool get hasCount => count.isNotEmpty;
   int get countValue => hasCount ? int.parse(count) : 1;

@@ -60,6 +60,7 @@ enum DawAction {
   viewSample,
   viewAutomation,
   viewHelp,
+  viewDebug,
   focusNext,
   focusPrev,
   focusFirst,
@@ -110,6 +111,7 @@ class Keymap {
         LogicalKeyboardKey.digit5 => DawAction.viewSample,
         LogicalKeyboardKey.digit6 => DawAction.viewAutomation,
         LogicalKeyboardKey.digit7 => DawAction.viewHelp,
+        LogicalKeyboardKey.digit8 => DawAction.viewDebug,
         _ => null,
       };
     }

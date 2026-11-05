@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:sridaw/core/app_log.dart';
 import 'package:sridaw/input/daw_input.dart';
 import 'package:sridaw/input/keyboard_controller.dart';
 import 'package:sridaw/main.dart';
@@ -1515,6 +1516,31 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(store.projects.keys, contains('second'));
     expect(painter().scene.project.name, 'second');
+  });
+
+  testWidgets('debug tab shows logs and can clear them', (tester) async {
+    AppLog.instance.clear();
+    AppLog.instance.error('TEST', 'boom');
+
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.digit8);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.digit8);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+
+    expect(find.byKey(const Key('debug-console')), findsOneWidget);
+    expect(find.textContaining('boom'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('debug-clear')));
+    await tester.pump();
+    expect(find.textContaining('boom'), findsNothing);
+    AppLog.instance.clear();
   });
 
   testWidgets('help view documents the touch gestures', (tester) async {

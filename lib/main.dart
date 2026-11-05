@@ -1,13 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'core/app_log.dart';
 import 'model/project_store.dart';
 import 'ui/app_shell.dart';
 import 'ui/daw_theme.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const VimDawApp());
+  runZonedGuarded(
+    () {
+      WidgetsFlutterBinding.ensureInitialized();
+      AppLog.install();
+      runApp(const VimDawApp());
+    },
+    (error, stack) {
+      AppLog.instance.error('ZONE', error.toString(), stack: stack);
+    },
+  );
 }
 
 /// `MaterialApp` is used purely as infrastructure (localisation, directionality,

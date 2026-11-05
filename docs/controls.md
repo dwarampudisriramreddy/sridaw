@@ -172,10 +172,14 @@ first.
 
 ## Views
 
-`Ctrl` + `1`, `3`…`7` switches views: `1` Roll, `3` Arrangement, `4` Mixer,
-`5` Instrument browser, `6` Automation, `7` Help. The tab bar at the top does
-the same; the palette button cycles the accent theme. There is no separate
-drum tab — drums are edited in the roll.
+`Ctrl` + `1`, `3`…`8` switches views: `1` Roll, `3` Arrangement, `4` Mixer,
+`5` Instrument browser, `6` Automation, `7` Help, `8` Debug. The tab bar at the
+top does the same; the palette button cycles the accent theme. There is no
+separate drum tab — drums are edited in the roll.
+
+The Debug tab is an in-app console. It collects `debugPrint` output, Flutter
+errors, uncaught async errors, and raw keyboard/IME events, newest first. Use
+`COPY` to copy the log or `CLEAR` to reset it.
 
 ## Drums
 
@@ -229,7 +233,7 @@ Press `:` and type a command, then `Enter`:
 | `:scale on\|off` | show/hide the in-key row highlight |
 | `:chord <type>` | harmonise the selection / cursor note |
 | `:strum <progression> <pattern>` | create strummed chords, e.g. `:strum i v iv d-uu-u` |
-| `:view <name>` | switch view (`roll`, `arrangement`, `mixer`, `sample`, `automation`, `help`) |
+| `:view <name>` | switch view (`roll`, `arrangement`, `mixer`, `sample`, `automation`, `help`, `debug`) |
 | `:help` | show this reference in-app |
 | `:ctrl+1.1-E4,1.2-C4` | select the rectangle between two `bar.beat-note` corners and grab it (no spaces, comma between corners) |
 

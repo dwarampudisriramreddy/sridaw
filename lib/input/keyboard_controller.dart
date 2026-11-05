@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../core/app_log.dart';
+
 /// Keeps an invisible [EditableText] permanently focused so the OS soft
 /// keyboard never dismisses, and routes *all* input through two callbacks:
 ///
@@ -66,7 +68,9 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
 
   void _refocus() {
     if (!mounted) return;
-    if (!_focus.hasFocus && !_textInputsOwnFocus()) {
+    final hadFocus = _focus.hasFocus;
+    final otherField = _textInputsOwnFocus();
+    if (!hadFocus && !otherField) {
       _focus.requestFocus();
     }
     // On mobile, focusing programmatically does not always pop the IME up
@@ -75,9 +79,15 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
         defaultTargetPlatform == TargetPlatform.iOS) {
       SystemChannels.textInput.invokeMethod<void>('TextInput.show');
     }
+    AppLog.instance.debug(
+      'IME',
+      'refocus hadFocus=$hadFocus otherField=$otherField '
+          'now=${_focus.hasFocus}',
+    );
   }
 
   void _handleFocusChange() {
+    AppLog.instance.debug('IME', 'sink focus=${_focus.hasFocus}');
     if (!_focus.hasFocus) {
       scheduleMicrotask(_refocus);
     }
@@ -114,12 +124,24 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     // While a real text field owns focus its characters belong to it, not to
     // the vim keymap.
     if (_textInputsOwnFocus()) return false;
+    if (event is KeyDownEvent) {
+      final char = event.character;
+      AppLog.instance.debug(
+        'KEY',
+        '${event.logicalKey.keyLabel}'
+            '${char == null || char.isEmpty ? '' : ' char=$char'}',
+      );
+    }
     return widget.onKey(event);
   }
 
   void _handleText() {
     final text = _controller.text;
     if (text == _lastText) return;
+    AppLog.instance.debug(
+      'IME',
+      'text="${_controller.text}" last="$_lastText"',
+    );
 
     // Never clear the controller from inside its listener: Gboard tries to
     // restore the composing region and can end up in a loop where no keys
@@ -127,16 +149,23 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     if (text.startsWith(_lastText)) {
       final delta = text.substring(_lastText.length);
       _lastText = text;
-      if (delta.isNotEmpty) widget.onText(delta);
+      if (delta.isNotEmpty) {
+        AppLog.instance.debug('IME', 'forward "$delta"');
+        widget.onText(delta);
+      }
       return;
     }
     if (_lastText.startsWith(text)) {
       // A deletion/backspace from the IME; no new character to forward.
       _lastText = text;
+      AppLog.instance.debug('IME', 'ignored deletion');
       return;
     }
     _lastText = text;
-    if (text.isNotEmpty) widget.onText(text);
+    if (text.isNotEmpty) {
+      AppLog.instance.debug('IME', 'replacement forward "$text"');
+      widget.onText(text);
+    }
   }
 
   @override
@@ -171,8 +200,11 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
                   textInputAction: TextInputAction.newline,
                   onChanged: (_) {},
                   // Keep the input connection alive after the Done action.
-                  onEditingComplete: () {},
+                  onEditingComplete: () {
+                    AppLog.instance.debug('IME', 'editing complete');
+                  },
                   onSubmitted: (_) {
+                    AppLog.instance.debug('IME', 'submitted');
                     widget.onSubmit?.call();
                     // Some Android IMEs hide after Done even when focus is
                     // retained, so ask for the keyboard again after the frame.

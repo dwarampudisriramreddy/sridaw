@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import 'icons.dart';
 
+import '../core/app_log.dart';
 import '../core/audio_engine.dart';
 import '../input/daw_input.dart';
 import '../input/keymap.dart';
@@ -20,6 +21,7 @@ import '../music_theory.dart' as theory;
 import '../render/arrangement_view.dart';
 import '../render/automation_view.dart';
 import '../render/browser_view.dart';
+import '../render/debug_view.dart';
 import '../render/instrument_picker.dart';
 import '../render/mixer_view.dart';
 import '../render/piano_roll_view.dart';
@@ -39,6 +41,7 @@ const List<ViewMode> _navViews = [
   ViewMode.sample,
   ViewMode.automation,
   ViewMode.help,
+  ViewMode.debug,
 ];
 
 /// The whole application surface. Owns the project, the grid pointer, the
@@ -490,6 +493,7 @@ class _AppShellState extends State<AppShell> {
   /// counts, etc. work identically on touch devices.
   void _onText(String text) {
     if (text.isEmpty) return;
+    AppLog.instance.debug('TEXT', 'mode=${_pointer.mode.label} text="$text"');
     if (_pointer.mode == InputMode.command) {
       final lineBreak = text.indexOf(RegExp(r'[\r\n]'));
       if (lineBreak >= 0) {
@@ -529,6 +533,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onTextSubmit() {
+    AppLog.instance.debug('TEXT', 'submitted mode=${_pointer.mode.label}');
     if (_pointer.mode == InputMode.command) {
       _runCommand(_commandBuffer);
     } else if (!_chordPending) {
@@ -804,6 +809,8 @@ class _AppShellState extends State<AppShell> {
         _setView(ViewMode.automation);
       case DawAction.viewHelp:
         _setView(ViewMode.help);
+      case DawAction.viewDebug:
+        _setView(ViewMode.debug);
     }
   }
 
@@ -2052,6 +2059,7 @@ class _AppShellState extends State<AppShell> {
   // ------------------------------------------------------------- commands
   void _runCommand(String raw) {
     final input = raw.trim();
+    AppLog.instance.debug('CMD', '> $input');
     setState(() {
       _commandBuffer = '';
       _pointer.mode = InputMode.normal;
@@ -3422,6 +3430,8 @@ class _AppShellState extends State<AppShell> {
         );
       case ViewMode.help:
         return _buildHelpView();
+      case ViewMode.debug:
+        return const DebugView();
     }
   }
 
@@ -3515,6 +3525,7 @@ class _AppShellState extends State<AppShell> {
                 ('CTRL+5', 'instrument browser'),
                 ('CTRL+6', 'automation'),
                 ('CTRL+7', 'help (this screen)'),
+                ('CTRL+8', 'debug console (logs + errors)'),
                 ('TAB / the tab bar', 'cycle views'),
               ], keyW),
               _helpSection('TRANSPORT + COMMANDS', [
