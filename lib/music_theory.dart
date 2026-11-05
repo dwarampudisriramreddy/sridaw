@@ -15,7 +15,7 @@ const List<String> noteNames = [
   'G#',
   'A',
   'A#',
-  'B'
+  'B',
 ];
 
 const Map<String, List<int>> scales = {
@@ -68,7 +68,8 @@ String? detectChord(List<int> pitchClasses) {
   if (pitchClasses.length < 2) return null;
   final abs = List<int>.from(pitchClasses)..sort();
   final root = abs.first;
-  final pcs = abs.map((a) => ((a - root) % 12 + 12) % 12).toSet().toList()..sort();
+  final pcs = abs.map((a) => ((a - root) % 12 + 12) % 12).toSet().toList()
+    ..sort();
   final key = pcs.join(',');
   final suffix = chordShapes[key];
   final rootName = noteNames[((root % 12) + 12) % 12];
@@ -76,7 +77,11 @@ String? detectChord(List<int> pitchClasses) {
 }
 
 /// Compute the absolute (oct, n) pitches for a chord pad's triad.
-List<({int oct, int n})> chordPitches(int rootNoteIndex, String scaleName, int degreeIndex) {
+List<({int oct, int n})> chordPitches(
+  int rootNoteIndex,
+  String scaleName,
+  int degreeIndex,
+) {
   final intervals = scales[scaleName] ?? scales['Major']!;
   final rootAbs = 5 * 12 + rootNoteIndex; // base octave 4 (C4 = MIDI 60)
   final out = <({int oct, int n})>[];
@@ -102,6 +107,21 @@ int? scaleDegree(int n, int rootNoteIndex, String scaleName) {
     if (intervals[i] == rel) return i + 1;
   }
   return null;
+}
+
+/// Every MIDI pitch in `[low, high]` that belongs to the key, ascending.
+/// Used by the roll's scale-only mode so one row equals one scale step.
+List<int> scalePitches(
+  int rootNoteIndex,
+  String scaleName, {
+  int low = 0,
+  int high = 127,
+}) {
+  final intervals = (scales[scaleName] ?? scales['Major']!).toSet();
+  return [
+    for (var pitch = low; pitch <= high; pitch++)
+      if (intervals.contains(((pitch - rootNoteIndex) % 12 + 12) % 12)) pitch,
+  ];
 }
 
 String noteLabel(int oct, int n) => '${noteNames[((n % 12) + 12) % 12]}$oct';
@@ -144,7 +164,11 @@ String? solfegeFor(int n, int rootNoteIndex, String scaleName) {
 
 /// Roman-numeral label with conventional case/quality for major-type scales.
 /// Falls back to plain upper numerals for other scale lengths.
-String romanFor(int degree1Based, List<int> intervals, int degreeIndexForQuality) {
+String romanFor(
+  int degree1Based,
+  List<int> intervals,
+  int degreeIndexForQuality,
+) {
   const upper7 = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
   if (intervals.length != 7) return '$degree1Based';
   final offsets = triadForDegree(intervals, degreeIndexForQuality);
@@ -211,7 +235,11 @@ const Map<String, String> chordShapeAliases = {
 
 /// True when every offset of a named chord sits inside the current scale.
 bool chordInScale(
-    int rootPc, List<int> offsets, int keyRoot, String scaleName) {
+  int rootPc,
+  List<int> offsets,
+  int keyRoot,
+  String scaleName,
+) {
   final intervals = scales[scaleName] ?? scales['Major']!;
   for (final off in offsets) {
     final pc = (rootPc + off) % 12;

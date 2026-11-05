@@ -10,12 +10,14 @@ import '../ui/daw_theme.dart';
 /// program number is not an option.
 class InstrumentPicker extends StatefulWidget {
   final int activeProgram;
+  final bool activeDrum;
   final Color accent;
   final void Function(GmInstrument instrument) onSelected;
 
   const InstrumentPicker({
     super.key,
     required this.activeProgram,
+    this.activeDrum = false,
     required this.accent,
     required this.onSelected,
   });
@@ -35,10 +37,10 @@ class _InstrumentPickerState extends State<InstrumentPicker> {
 
   List<GmInstrument> get _matches {
     final q = _filter.text.trim().toLowerCase();
-    if (q.isEmpty) return gmInstruments;
+    if (q.isEmpty) return allInstruments;
     final number = int.tryParse(q);
     return [
-      for (final e in gmInstruments)
+      for (final e in allInstruments)
         if (e.name.toLowerCase().contains(q) ||
             e.family.toLowerCase().contains(q) ||
             (number != null &&
@@ -71,8 +73,10 @@ class _InstrumentPickerState extends State<InstrumentPicker> {
             decoration: InputDecoration(
               hintText: 'filter by name or program number',
               isDense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 10,
+              ),
               hintStyle: DawFonts.mono(size: 11, color: DawColors.textFaint),
               filled: true,
               fillColor: DawColors.surfaceAlt,
@@ -94,55 +98,70 @@ class _InstrumentPickerState extends State<InstrumentPicker> {
           Expanded(
             child: entries.isEmpty
                 ? Center(
-                    child: Text('no match',
-                        style: DawFonts.mono(
-                            size: 11, color: DawColors.textFaint)),
+                    child: Text(
+                      'no match',
+                      style: DawFonts.mono(
+                        size: 11,
+                        color: DawColors.textFaint,
+                      ),
+                    ),
                   )
                 : ListView.builder(
                     itemCount: entries.length,
                     itemBuilder: (ctx, i) {
                       final e = entries[i];
-                      final active = e.program == widget.activeProgram;
+                      final active =
+                          e.drum == widget.activeDrum &&
+                          e.program == widget.activeProgram;
                       return InkWell(
-                        key: Key('inst-${e.program}'),
+                        key: Key('inst-${e.drum ? 'kit-' : ''}${e.program}'),
                         onTap: () => widget.onSelected(e),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 7),
+                            horizontal: 4,
+                            vertical: 7,
+                          ),
                           decoration: const BoxDecoration(
                             border: Border(
-                                bottom:
-                                    BorderSide(color: DawColors.borderSoft)),
+                              bottom: BorderSide(color: DawColors.borderSoft),
+                            ),
                           ),
                           child: Row(
                             children: [
                               SizedBox(
                                 width: 34,
-                                child: Text('${e.program + 1}',
-                                    style: DawFonts.mono(
-                                        size: 10,
-                                        color: active
-                                            ? _accentColor
-                                            : DawColors.textFaint)),
+                                child: Text(
+                                  '${e.program + 1}',
+                                  style: DawFonts.mono(
+                                    size: 10,
+                                    color: active
+                                        ? _accentColor
+                                        : DawColors.textFaint,
+                                  ),
+                                ),
                               ),
                               Expanded(
                                 child: Text(
                                   e.name,
                                   overflow: TextOverflow.ellipsis,
                                   style: DawFonts.body(
-                                      size: 11,
-                                      weight: active
-                                          ? FontWeight.w700
-                                          : FontWeight.w400,
-                                      color: active
-                                          ? _accentColor
-                                          : DawColors.text),
+                                    size: 11,
+                                    weight: active
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                    color: active
+                                        ? _accentColor
+                                        : DawColors.text,
+                                  ),
                                 ),
                               ),
-                              Text(e.family,
-                                  style: DawFonts.mono(
-                                      size: 9,
-                                      color: DawColors.textFaint)),
+                              Text(
+                                e.family,
+                                style: DawFonts.mono(
+                                  size: 9,
+                                  color: DawColors.textFaint,
+                                ),
+                              ),
                             ],
                           ),
                         ),

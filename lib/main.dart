@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'model/project_store.dart';
 import 'ui/app_shell.dart';
 import 'ui/daw_theme.dart';
 
@@ -13,7 +14,9 @@ void main() {
 /// focus and IME plumbing). The visible UI is custom-painted and laid out with
 /// plain widgets, styled from [DawTheme].
 class VimDawApp extends StatelessWidget {
-  const VimDawApp({super.key});
+  final ProjectStore? projectStore;
+
+  const VimDawApp({super.key, this.projectStore});
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +33,7 @@ class VimDawApp extends StatelessWidget {
         ),
         textTheme: GoogleFonts.interTextTheme(base.textTheme),
       ),
-      home: const AppShell(),
+      home: AppShell(projectStore: projectStore),
     );
   }
 }

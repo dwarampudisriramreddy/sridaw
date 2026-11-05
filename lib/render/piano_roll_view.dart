@@ -67,7 +67,18 @@ class PianoRollPainter extends CustomPainter {
   late RollLayout _l;
 
   static const List<String> _names = [
-    'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B',
+    'C',
+    'C#',
+    'D',
+    'D#',
+    'E',
+    'F',
+    'F#',
+    'G',
+    'G#',
+    'A',
+    'A#',
+    'B',
   ];
 
   @override
@@ -78,12 +89,14 @@ class PianoRollPainter extends CustomPainter {
 
     if (scene.view == ViewMode.roll) {
       canvas.save();
-      canvas.clipRect(Rect.fromLTWH(
-        _l.gridX.toDouble(),
-        _l.gridY.toDouble(),
-        _l.gridW.toDouble(),
-        _l.gridH.toDouble(),
-      ));
+      canvas.clipRect(
+        Rect.fromLTWH(
+          _l.gridX.toDouble(),
+          _l.gridY.toDouble(),
+          _l.gridW.toDouble(),
+          _l.gridH.toDouble(),
+        ),
+      );
       _drawRows(canvas);
       _drawColumns(canvas);
       _drawNotes(canvas);
@@ -111,33 +124,45 @@ class PianoRollPainter extends CustomPainter {
     final gw = l.gridW.toDouble();
     final h = RollLayout.cellH.toDouble();
 
-    for (var pitch = l.viewLowPitch; pitch <= l.topPitch; pitch++) {
+    final pitches = l.visiblePitches;
+    for (final pitch in pitches) {
       final y = l.yForPitch(pitch).toDouble();
       final pc = ((pitch % 12) + 12) % 12;
-      final inScale =
-          intervals.contains(((pc - scene.scaleRoot) % 12 + 12) % 12);
+      final inScale = intervals.contains(
+        ((pc - scene.scaleRoot) % 12 + 12) % 12,
+      );
       final black = _isBlack(pc);
 
       Color row = black ? DawColors.rowBlack : DawColors.rowWhite;
-      if (scene.showScale && inScale) row = DawColors.rowScale;
+      if (scene.showScale && inScale && !l.scaleOnly) {
+        row = DawColors.rowScale;
+      }
 
       canvas.drawRect(Rect.fromLTWH(gx, y, gw, h), Paint()..color = row);
     }
 
     // Row borders on exact cell boundaries (plus the bottom edge).
-    for (var pitch = l.viewLowPitch - 1; pitch <= l.topPitch; pitch++) {
+    for (final pitch in pitches) {
       final y = l.yForPitch(pitch).toDouble();
       final pc = ((pitch % 12) + 12) % 12;
-      final isOctave = pc == 11 && pitch >= l.viewLowPitch;
+      final isOctave = l.scaleOnly
+          ? pc == ((scene.scaleRoot % 12) + 12) % 12
+          : pc == 11 && pitch >= l.viewLowPitch;
       canvas.drawRect(
         Rect.fromLTWH(gx, y, gw, 1),
         Paint()..color = isOctave ? DawColors.octaveLine : DawColors.rowLine,
       );
     }
+    if (pitches.isNotEmpty) {
+      final bottom = l.yForPitch(pitches.first).toDouble() + h;
+      canvas.drawRect(
+        Rect.fromLTWH(gx, bottom, gw, 1),
+        Paint()..color = DawColors.rowLine,
+      );
+    }
   }
 
-  bool _isBlack(int pc) =>
-      pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
+  bool _isBlack(int pc) => pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
 
   // ------------------------------------------------------------ column grid
   void _drawColumns(Canvas canvas) {
@@ -156,8 +181,8 @@ class PianoRollPainter extends CustomPainter {
       final color = inBar
           ? DawColors.barLine
           : inBeat
-              ? DawColors.beatLine
-              : DawColors.stepLine;
+          ? DawColors.beatLine
+          : DawColors.stepLine;
       canvas.drawRect(
         Rect.fromLTWH(x, gridTop, 1, gridH),
         Paint()..color = color,
@@ -185,7 +210,7 @@ class PianoRollPainter extends CustomPainter {
     required bool selected,
   }) {
     final l = _l;
-    if (note.pitch < l.viewLowPitch || note.pitch > l.topPitch) return;
+    if (!l.isPitchVisible(note.pitch)) return;
     final x = l.xForCol(note.start).toDouble();
     final y = l.yForPitch(note.pitch).toDouble();
     final w = note.len * RollLayout.cellW.toDouble();
@@ -302,8 +327,12 @@ class PianoRollPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..color = box;
-    for (final c in [rect.topLeft, rect.topRight, rect.bottomLeft,
-        rect.bottomRight]) {
+    for (final c in [
+      rect.topLeft,
+      rect.topRight,
+      rect.bottomLeft,
+      rect.bottomRight,
+    ]) {
       final sx = c.dx == rect.left ? 1.0 : -1.0;
       final sy = c.dy == rect.top ? 1.0 : -1.0;
       canvas.drawLine(c, c.translate(tick * sx, 0), stroke);
@@ -349,7 +378,7 @@ class PianoRollPainter extends CustomPainter {
       Paint()..color = color.withValues(alpha: 0.5),
     );
 
-    if (p.pitch >= l.viewLowPitch && p.pitch <= l.topPitch) {
+    if (l.isPitchVisible(p.pitch)) {
       final cy = l.yForPitch(p.pitch).toDouble();
       canvas.drawRect(
         Rect.fromLTWH(gridLeft, cy, gridW, cellH),
@@ -378,7 +407,7 @@ class PianoRollPainter extends CustomPainter {
   // ------------------------------------------------------------ piano keys
   void _drawKeys(Canvas canvas) {
     final l = _l;
-    final keyW = RollLayout.keyW.toDouble();
+    final keyW = l.gutterW.toDouble();
     final height = l.height.toDouble();
     final drum = isDrumTrack(scene.project.track);
 
@@ -388,20 +417,30 @@ class PianoRollPainter extends CustomPainter {
     );
 
     if (drum) {
-      for (var pitch = l.viewLowPitch; pitch <= l.topPitch; pitch++) {
+      for (final pitch in l.visiblePitches) {
         final y = l.yForPitch(pitch).toDouble();
         final underCursor = pitch == scene.pointer.pitch;
         final hasNote = scene.project.track.notes.any((n) => n.pitch == pitch);
-        final selectedRow = scene.project.selection.any((n) => n.pitch == pitch);
+        final selectedRow = scene.project.selection.any(
+          (n) => n.pitch == pitch,
+        );
         final short = drumShortFor(pitch) ?? drumNameFor(pitch);
         final isCommon = short != null;
 
-        final rect = Rect.fromLTWH(1, y + 0.5, keyW - 6, RollLayout.cellH - 1.0);
+        final rect = Rect.fromLTWH(
+          1,
+          y + 0.5,
+          keyW - 6,
+          RollLayout.cellH - 1.0,
+        );
         final r = RRect.fromRectAndRadius(rect, const Radius.circular(2.5));
         Color bg = isCommon ? const Color(0xFF262626) : const Color(0xFF1A1A1A);
-        if (underCursor) bg = scene.accent;
-        else if (selectedRow) bg = Color.lerp(bg, scene.accent2, 0.4)!;
-        else if (hasNote) bg = Color.lerp(bg, scene.accent, 0.35)!;
+        if (underCursor)
+          bg = scene.accent;
+        else if (selectedRow)
+          bg = Color.lerp(bg, scene.accent2, 0.4)!;
+        else if (hasNote)
+          bg = Color.lerp(bg, scene.accent, 0.35)!;
         canvas.drawRRect(r, Paint()..color = bg);
         canvas.drawRRect(
           r,
@@ -414,16 +453,18 @@ class PianoRollPainter extends CustomPainter {
         final labelColor = underCursor
             ? const Color(0xE6000000)
             : isCommon
-                ? DawColors.text
-                : DawColors.textFaint;
-        _textVertical(
+            ? DawColors.text
+            : DawColors.textFaint;
+        // Drum names read horizontally, centred in the wide gutter.
+        _text(
           canvas,
           short ?? pitch.toString(),
-          13,
-          y + RollLayout.cellH / 2,
+          keyW / 2,
+          y + (RollLayout.cellH - (isCommon ? 10 : 9)) / 2,
           color: labelColor,
           size: isCommon ? 8.5 : 7.5,
           weight: isCommon ? FontWeight.w700 : FontWeight.w500,
+          center: true,
         );
       }
       canvas.drawRect(
@@ -433,15 +474,20 @@ class PianoRollPainter extends CustomPainter {
       return;
     }
 
-    for (var pitch = l.viewLowPitch; pitch <= l.topPitch; pitch++) {
+    for (final pitch in l.visiblePitches) {
       final y = l.yForPitch(pitch).toDouble();
       final pc = ((pitch % 12) + 12) % 12;
       final black = _isBlack(pc);
-      final isRoot = pc == 0;
+      final isRoot = pc == (l.scaleOnly ? scene.scaleRoot % 12 : 0);
       final underCursor = pitch == scene.pointer.pitch;
 
       if (black) {
-        final rect = Rect.fromLTWH(2, y + 1.5, keyW - 18, RollLayout.cellH - 3.0);
+        final rect = Rect.fromLTWH(
+          2,
+          y + 1.5,
+          keyW - 18,
+          RollLayout.cellH - 3.0,
+        );
         final r = RRect.fromRectAndRadius(rect, const Radius.circular(2));
         canvas.drawRRect(
           r,
@@ -455,7 +501,12 @@ class PianoRollPainter extends CustomPainter {
             ..color = const Color(0xFF0A0A0C),
         );
       } else {
-        final rect = Rect.fromLTWH(1, y + 0.5, keyW - 6, RollLayout.cellH - 1.0);
+        final rect = Rect.fromLTWH(
+          1,
+          y + 0.5,
+          keyW - 6,
+          RollLayout.cellH - 1.0,
+        );
         final r = RRect.fromRectAndRadius(rect, const Radius.circular(2.5));
         canvas.drawRRect(
           r,
@@ -475,8 +526,8 @@ class PianoRollPainter extends CustomPainter {
       final labelColor = underCursor
           ? (black ? const Color(0xE6FFFFFF) : const Color(0xE6000000))
           : black
-              ? DawColors.textFaint
-              : (isRoot ? DawColors.keyLabel : DawColors.textFaint);
+          ? DawColors.textFaint
+          : (isRoot ? DawColors.keyLabel : DawColors.textFaint);
       _textVertical(
         canvas,
         _pitchName(pitch),
@@ -515,15 +566,22 @@ class PianoRollPainter extends CustomPainter {
     for (var c = 0; c <= l.cols; c++) {
       final col = l.viewCol + c;
       final x = l.xForCol(col).toDouble();
-      if (x < RollLayout.keyW) continue;
+      if (x < l.gutterW) continue;
 
       if (col % stepPerBar == 0) {
         canvas.drawRect(
           Rect.fromLTWH(x, 3, 1, rulerH - 3),
           Paint()..color = DawColors.textDim,
         );
-        _text(canvas, '${col ~/ stepPerBar + 1}', x + 5, 5,
-            color: DawColors.text, size: 11, weight: FontWeight.w700);
+        _text(
+          canvas,
+          '${col ~/ stepPerBar + 1}',
+          x + 5,
+          5,
+          color: DawColors.text,
+          size: 11,
+          weight: FontWeight.w700,
+        );
       } else if (col % stepPerBeat == 0) {
         canvas.drawRect(
           Rect.fromLTWH(x, 13, 1, rulerH - 13),
@@ -536,16 +594,29 @@ class PianoRollPainter extends CustomPainter {
         );
       }
     }
-
   }
 
   // ------------------------------------------------------------------ misc
   void _drawPlaceholder(Canvas canvas, Size size) {
-    _text(canvas, scene.view.label, size.width / 2, size.height / 2 - 10,
-        color: scene.accent, size: 18, weight: FontWeight.w700, center: true);
-    _text(canvas, 'coming in a later milestone', size.width / 2,
-        size.height / 2 + 12,
-        color: DawColors.textFaint, size: 12, center: true);
+    _text(
+      canvas,
+      scene.view.label,
+      size.width / 2,
+      size.height / 2 - 10,
+      color: scene.accent,
+      size: 18,
+      weight: FontWeight.w700,
+      center: true,
+    );
+    _text(
+      canvas,
+      'coming in a later milestone',
+      size.width / 2,
+      size.height / 2 + 12,
+      color: DawColors.textFaint,
+      size: 12,
+      center: true,
+    );
   }
 
   void _drawHelp(Canvas canvas, Size size) {
@@ -585,8 +656,15 @@ class PianoRollPainter extends CustomPainter {
       y += 22;
       if (y > size.height - 20) break;
     }
-    _text(canvas, 'VIMDAW — key reference', size.width / 2, size.height - 26,
-        color: DawColors.textFaint, size: 11, center: true);
+    _text(
+      canvas,
+      'VIMDAW — key reference',
+      size.width / 2,
+      size.height - 26,
+      color: DawColors.textFaint,
+      size: 11,
+      center: true,
+    );
   }
 
   void _text(
@@ -602,11 +680,7 @@ class PianoRollPainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(
-          color: color,
-          fontSize: size,
-          fontWeight: weight,
-        ),
+        style: TextStyle(color: color, fontSize: size, fontWeight: weight),
       ),
       textDirection: TextDirection.ltr,
     )..layout();

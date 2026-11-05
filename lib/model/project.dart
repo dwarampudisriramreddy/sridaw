@@ -55,7 +55,7 @@ class Project {
   int bpm;
   int stepsPerBeat; // 16th notes -> 4
   int beatsPerBar;
-  int totalBars;
+  double totalBars;
   List<Track> tracks;
   int activeTrack;
   final Set<Note> selection;
@@ -79,7 +79,7 @@ class Project {
         selection = {};
 
   int get stepsPerBar => stepsPerBeat * beatsPerBar;
-  int get totalSteps => stepsPerBar * totalBars;
+  int get totalSteps => (stepsPerBar * totalBars).round();
 
   Track get track => tracks[activeTrack];
 

@@ -7,7 +7,11 @@ class GmInstrument {
   final String name;
   final String family;
 
-  const GmInstrument(this.program, this.name, this.family);
+  /// True for percussion kits: selecting one switches the track to the GM
+  /// drum channel and shows drum names in the roll.
+  final bool drum;
+
+  const GmInstrument(this.program, this.name, this.family, {this.drum = false});
 }
 
 const List<String> gmFamilies = [
@@ -160,6 +164,22 @@ const List<String> _gmNames = [
   'Gunshot',
 ];
 
+/// Family shown by the drum-kit rows in the instrument picker/browser.
+const String drumFamily = 'Drums';
+
+/// Drum kits from the bundled GeneralUser-GS SoundFont (bank 128). The
+/// 808/909 kit is preset 25; the others are useful starting points.
+const List<GmInstrument> gmDrumKits = [
+  GmInstrument(25, '808 / 909 Kit', drumFamily, drum: true),
+  GmInstrument(24, 'Electronic Kit', drumFamily, drum: true),
+  GmInstrument(26, 'Dance Kit', drumFamily, drum: true),
+  GmInstrument(0, 'Standard Kit', drumFamily, drum: true),
+  GmInstrument(8, 'Room Kit', drumFamily, drum: true),
+  GmInstrument(16, 'Power Kit', drumFamily, drum: true),
+  GmInstrument(32, 'Jazz Kit', drumFamily, drum: true),
+  GmInstrument(40, 'Brush Kit', drumFamily, drum: true),
+];
+
 const List<String> gmFamiliesShort = [
   'Piano',
   'Chromatic',
@@ -184,7 +204,18 @@ final List<GmInstrument> gmInstruments = List.generate(
   (i) => GmInstrument(i, _gmNames[i], gmFamiliesShort[i ~/ 8]),
 );
 
+/// Drum kits first so they are easy to reach in the tap picker, followed by
+/// the 128 melodic programs.
+final List<GmInstrument> allInstruments = [...gmDrumKits, ...gmInstruments];
+
 String gmProgramName(int program) {
   if (program < 0 || program >= _gmNames.length) return 'Program $program';
   return _gmNames[program];
+}
+
+String gmDrumKitName(int program) {
+  for (final k in gmDrumKits) {
+    if (k.program == program) return k.name;
+  }
+  return 'Drum Kit';
 }

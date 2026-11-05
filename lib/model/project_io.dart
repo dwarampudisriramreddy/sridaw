@@ -85,7 +85,7 @@ class ProjectIO {
       bpm: json['bpm'] as int? ?? 120,
       stepsPerBeat: json['stepsPerBeat'] as int? ?? 4,
       beatsPerBar: json['beatsPerBar'] as int? ?? 4,
-      totalBars: json['totalBars'] as int? ?? 4,
+      totalBars: (json['totalBars'] as num?)?.toDouble() ?? 4,
       activeTrack: json['activeTrack'] as int? ?? 0,
       scaleRoot: json['scaleRoot'] as int? ?? 0,
       scaleName: json['scaleName'] as String? ?? 'Major',

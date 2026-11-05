@@ -60,7 +60,6 @@ enum DawAction {
   viewSample,
   viewAutomation,
   viewHelp,
-  viewDrumMachine,
   focusNext,
   focusPrev,
   focusFirst,
@@ -104,9 +103,8 @@ class Keymap {
         LogicalKeyboardKey.keyA => DawAction.selectAll,
         LogicalKeyboardKey.keyD => DawAction.deleteSelection,
         LogicalKeyboardKey.keyR => DawAction.redo,
-        // `2` is free: the pattern tab was removed, now it opens the drum machine.
+        // `2` is free: drums are edited in the roll now.
         LogicalKeyboardKey.digit1 => DawAction.viewRoll,
-        LogicalKeyboardKey.digit2 => DawAction.viewDrumMachine,
         LogicalKeyboardKey.digit3 => DawAction.viewArrangement,
         LogicalKeyboardKey.digit4 => DawAction.viewMixer,
         LogicalKeyboardKey.digit5 => DawAction.viewSample,
@@ -243,6 +241,16 @@ class Keymap {
         return 'maj7';
     }
     return null;
+  }
+
+  /// A shifted digit (Shift+0…9), used to start a bar-length entry.
+  static int? shiftDigit(KeyEvent event) {
+    if (event is! KeyDownEvent) return null;
+    final kb = HardwareKeyboard.instance;
+    if (!kb.isShiftPressed || kb.isControlPressed || kb.isAltPressed) {
+      return null;
+    }
+    return _digits[event.logicalKey];
   }
 
   /// A count digit (vim `3l`), or null if the key is not a bare digit.

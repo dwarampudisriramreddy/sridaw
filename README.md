@@ -9,13 +9,20 @@ movement keys.
 
 - Native-resolution piano-roll renderer: real piano keys labelled vertically,
   a bar/beat ruler, a row + column crosshair cursor and modern note blocks.
-- Drum machine tab (`Ctrl+2`): the same grid with a column of sound pads you
-  add yourself — tap a cell for a hit, drag to paint a run.
+- Key & scale chip: pick a root and mode, or turn on scale-keys mode so the
+  roll has one row per scale step and hides chromatic keys.
+- Drums live in the same roll: `:drum on` turns the track into a GM kit and
+  the gutter names read horizontally — tap a cell for a hit, drag to paint a
+  run. The instrument chip lists drum kits (`808 / 909`, Electronic, Dance …)
+  right above the melodic programs.
 - Sound is wired end to end: the transport pushes the project into the
   JUCE/FluidSynth engine so play actually plays (drums on GM channel 10), and
-  the toolbar's instrument chip opens a tap-to-load GM list (`:inst piano`
-  is the command-line twin).
+  the toolbar's instrument chip opens a tap-to-load GM list starting with
+  drum kits (`:inst piano` / `:inst 808` are the command-line twins).
 - Fresh projects start empty — no demo song to delete first.
+- Projects save to the app's internal `sridaw/projects` folder and reopen
+  editable: `:w <name>` saves, `:e <name>` opens, or tap the project name in
+  the toolbar to use the project picker.
 - Modern chrome: glass panels, gradient accents, Google Fonts and animated
   transport.
 

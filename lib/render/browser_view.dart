@@ -21,6 +21,7 @@ class BrowserView extends StatelessWidget {
   final List<GmInstrument> entries;
   final int selectedIndex;
   final int activeProgram;
+  final bool activeDrum;
   final void Function(int categoryIndex)? onCategoryTap;
   final void Function(int entryIndex)? onEntryTap;
 
@@ -36,6 +37,7 @@ class BrowserView extends StatelessWidget {
     required this.entries,
     required this.selectedIndex,
     required this.activeProgram,
+    this.activeDrum = false,
     this.onCategoryTap,
     this.onEntryTap,
   });
@@ -44,10 +46,9 @@ class BrowserView extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = layout.width.toDouble();
     final h = layout.height.toDouble();
-    final selected =
-        (selectedIndex >= 0 && selectedIndex < entries.length)
-            ? entries[selectedIndex]
-            : null;
+    final selected = (selectedIndex >= 0 && selectedIndex < entries.length)
+        ? entries[selectedIndex]
+        : null;
 
     return focus_mgr.FocusableWidget(
       key: const Key('browser-root'),
@@ -65,8 +66,7 @@ class BrowserView extends StatelessWidget {
                   // On phones the details pane would squeeze the program list to
                   // nothing, so only show it when there is room for it.
                   final showDetails = constraints.maxWidth >= 560;
-                  final categoriesW =
-                      constraints.maxWidth < 420 ? 96.0 : 140.0;
+                  final categoriesW = constraints.maxWidth < 420 ? 96.0 : 140.0;
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -102,8 +102,11 @@ class BrowserView extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              '${project.track.name} · GM ${activeProgram.toString().padLeft(3, '0')} '
-              '${gmProgramName(activeProgram)}',
+              activeDrum
+                  ? '${project.track.name} · drum kit '
+                        '${gmDrumKitName(activeProgram)}'
+                  : '${project.track.name} · GM ${activeProgram.toString().padLeft(3, '0')} '
+                        '${gmProgramName(activeProgram)}',
               overflow: TextOverflow.ellipsis,
               style: DawFonts.uiSmall.copyWith(color: DawColors.textMuted),
             ),
@@ -172,7 +175,7 @@ class BrowserView extends StatelessWidget {
       itemBuilder: (context, i) {
         final e = entries[i];
         final isSelected = i == selectedIndex;
-        final isActive = e.program == activeProgram;
+        final isActive = e.drum == activeDrum && e.program == activeProgram;
         final fg = isSelected ? Colors.black : DawColors.text;
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -207,7 +210,11 @@ class BrowserView extends StatelessWidget {
                   ),
                 ),
                 if (isActive)
-                  Icon(Icons.check, size: 14, color: isSelected ? Colors.black : accent.accent),
+                  Icon(
+                    Icons.check,
+                    size: 14,
+                    color: isSelected ? Colors.black : accent.accent,
+                  ),
               ],
             ),
           ),
@@ -227,8 +234,10 @@ class BrowserView extends StatelessWidget {
             Text('DETAILS', style: DawFonts.display(size: 10, spacing: 2)),
             const SizedBox(height: 12),
             if (selected != null) ...[
-              Text(selected.name,
-                  style: DawFonts.ui.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                selected.name,
+                style: DawFonts.ui.copyWith(fontWeight: FontWeight.w700),
+              ),
               const SizedBox(height: 8),
               _row('Family', selected.family),
               _row('Program', selected.program.toString()),
@@ -236,10 +245,15 @@ class BrowserView extends StatelessWidget {
               _row('Channel', '${project.track.channel + 1}'),
               _row('Track', project.track.name),
               const SizedBox(height: 16),
-              Text('Loaded onto the active track',
-                  style: DawFonts.uiSmall.copyWith(color: DawColors.textFaint)),
+              Text(
+                'Loaded onto the active track',
+                style: DawFonts.uiSmall.copyWith(color: DawColors.textFaint),
+              ),
             ] else
-              Text('—', style: DawFonts.ui.copyWith(color: DawColors.textFaint)),
+              Text(
+                '—',
+                style: DawFonts.ui.copyWith(color: DawColors.textFaint),
+              ),
           ],
         ),
       ),
@@ -253,13 +267,17 @@ class BrowserView extends StatelessWidget {
         children: [
           SizedBox(
             width: 64,
-            child: Text(label,
-                style: DawFonts.uiSmall.copyWith(color: DawColors.textMuted)),
+            child: Text(
+              label,
+              style: DawFonts.uiSmall.copyWith(color: DawColors.textMuted),
+            ),
           ),
           Expanded(
-            child: Text(value,
-                overflow: TextOverflow.ellipsis,
-                style: DawFonts.mono9.copyWith(color: DawColors.text)),
+            child: Text(
+              value,
+              overflow: TextOverflow.ellipsis,
+              style: DawFonts.mono9.copyWith(color: DawColors.text),
+            ),
           ),
         ],
       ),

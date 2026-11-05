@@ -21,7 +21,7 @@ on-screen extra-keys row mirrors the same commands for touch devices.
 | Keys | Action |
 | --- | --- |
 | `h` / `l` | step left / right |
-| `j` / `k` | step down / up (a semitone) |
+| `j` / `k` | step down / up (a semitone, or one scale step in scale-keys mode) |
 | `Shift` + `h` / `l` | move by one beat |
 | `Shift` + `j` / `k` | move by one octave |
 | `w` / `b` | jump to next / previous note |
@@ -39,7 +39,16 @@ column, with the intersection cell blinking. This makes the active beat and
 pitch readable at a glance.
 
 Every key on the piano gutter is labelled vertically with its note name
-(`C4`, `C#4`, …); the `C` labels are emphasised.
+(`C4`, `C#4`, …); the tonic labels are emphasised.
+
+## Key & scale
+
+Tap the key chip in the toolbar (or run `:scale <root> [name]`) to change the
+project key. The picker applies root and scale immediately. Turn on **SCALE
+KEYS ONLY** there (or run `:scale keys on`) to replace the chromatic keyboard
+with one row per scale step: out-of-key rows disappear, `j`/`k` move by scale
+degree, and new notes land on the scale. `:scale keys off` restores every
+semitone. `:scale on|off` controls the in-key row highlight instead.
 
 ## CTRL grab / box select
 
@@ -71,6 +80,7 @@ release the grab.
 | `v` / `V` | paste after / before |
 | `Ctrl+a` | select all notes on the active track |
 | `Ctrl+d` | delete the selected notes |
+| `Shift` + `0`…`9` | start a bar-length entry (e.g. `Shift+1`, `.5`, `Enter` = 1.5 bars) |
 | `d` | delete selection/note · on an empty cell: toggle Erase |
 | `y` | yank selection (or the note under the cursor) |
 | `u` / `Ctrl+r` | undo / redo |
@@ -137,36 +147,44 @@ single `d` produces one block chord per bar. Use `|` before a spaced pattern:
 
 Play pushes every track's notes into the audio engine as one loop at the
 project tempo and starts it at the playhead, so playback is actually audible —
-drum-machine hits included (they go to GM channel 10). The status line reports
+drum hits included (they go to GM channel 10). The status line reports
 what went in: `PLAYING · 12 note(s)`, or `PLAYING · no notes yet` when nothing
 has been written. Pause and stop release anything still ringing.
 
 ## Instrument
 
-Each track plays one General MIDI program:
+Each track plays one General MIDI program. The list starts with drum kits
+(`808 / 909`, Electronic, Dance, Standard …), then the 128 melodic programs:
 
 | Where | Action |
 | --- | --- |
 | toolbar chip, next to the track name | tap it to open the instrument list, filter by name or number, tap a row to load it |
-| `:inst <name-or-number>` | e.g. `:inst piano`, `:inst 118`; `:inst` alone reports the current sound |
-| Sample view (`Ctrl+5`) | `j`/`k` pick a program, `i` loads it onto the active track |
+| `:inst <name-or-number>` | e.g. `:inst piano`, `:inst 118`, `:inst 808`; `:inst` alone reports the current sound |
+| Sample view (`Ctrl+5`) | `j`/`k` pick a program, `i` loads it onto the active track; the `Drums` category is last |
 
-Loading an instrument previews it on the cursor pitch, so the choice is
-audible immediately. A drum track keeps the GM percussion kit no matter what
-is selected here. The project starts empty on `Track 1` (Acoustic Grand
-Piano) — there is no demo song to delete first.
+Selecting a drum kit turns the active track into a drum track (GM channel 10)
+and the roll immediately switches to horizontal `KICK`, `SNARE`, `CLAP` …
+names. Selecting a melodic program on a drum track switches it back to a
+normal melodic track and loads that sound. Loading an instrument previews it
+on the cursor pitch, so the choice is audible immediately. The project starts
+empty on `Track 1` (Acoustic Grand Piano) — there is no demo song to delete
+first.
 
 ## Views
 
-`Ctrl` + `1`…`7` switches views: `1` Roll, `2` Drum machine, `3`
-Arrangement, `4` Mixer, `5` Sample, `6` Automation, `7` Help. The tab bar at
-the top does the same; the palette button cycles the accent theme.
+`Ctrl` + `1`, `3`…`7` switches views: `1` Roll, `3` Arrangement, `4` Mixer,
+`5` Instrument browser, `6` Automation, `7` Help. The tab bar at the top does
+the same; the palette button cycles the accent theme. There is no separate
+drum tab — drums are edited in the roll.
 
-## Drum machine
+## Drums
 
-The drum machine is the piano-roll grid with a column of sound pads instead
-of piano keys. Rows are the sounds you put on the machine, columns are 16th
-steps:
+Drums use the same roll grid. Turn the active track into a GM drum track with
+`:drum on` (or place the first hit); rows then read `KICK`, `SNARE`, `CLAP` …
+horizontally instead of piano keys, and playback goes to GM channel 10.
+`:drum off` returns the track to melodic names. To change kits without
+leaving the roll, open the instrument chip and pick `808 / 909`, Electronic,
+Dance, and so on.
 
 | Touch | Action |
 | --- | --- |
@@ -174,16 +192,19 @@ steps:
 | double-tap a cell | place a hit (double-tapping again removes it) |
 | drag across the grid | paint a run of hits (adds only) |
 | long-press a hit | erase it |
-| tap a pad name | preview the sound and select its row |
-| `+ SOUND` (top-left corner) | add kick, snare … from the GM kit, or type your own name + note — the grid itself never opens it |
-| `×` on a pad / long-press a pad | remove the sound from the machine (its hits stay) |
-| drag the pad column | scroll the sounds |
-| drag the ruler | scroll in time |
+| drag the gutter / ruler | scroll the sounds / time |
 
-Keyboard: `Ctrl+2` opens it, `j`/`k` walk between pads, `i` toggles a hit
-under the cursor, `d` removes it, `h`/`l` move in time. The first hit turns
-the active track into a GM drum track (channel 10) so playback and the
-piano-roll gutter agree.
+Keyboard: `j`/`k` walk between drum rows, `i` toggles a hit under the cursor,
+`d` removes it, `h`/`l` move in time.
+
+## Projects
+
+Projects are stored inside the app's private internal storage under
+`sridaw/projects` (`getApplicationDocumentsDirectory()`), so they survive
+app restarts and remain editable. Tap the project name in the toolbar to open
+the picker: type a name and press **SAVE**, or tap a saved project to open it
+in the roll. The command-line equivalents are `:w [name]`, `:e [name]`,
+`:ls`, and `:storage`.
 
 ## Command line
 
@@ -191,19 +212,24 @@ Press `:` and type a command, then `Enter`:
 
 | Command | Action |
 | --- | --- |
-| `:w` | save (reports “not implemented until M5”) |
+| `:w [name]` | save the project in the app's internal storage (defaults to its current name) |
+| `:e [name]` / `:open [name]` | open a saved project; with no name, show the project picker |
+| `:ls` / `:projects` | list saved projects |
+| `:storage` | show the projects folder path |
 | `:q` | quit (close the window) |
 | `:pal <name>` / `:theme <name>` | set the accent theme (`mono`, `slate`, `sand`, `moss`, `rose`) |
 | `:bpm <n>` | set tempo (20–300) |
 | `:len <n>` | default note length when drawing (1–64) |
-| `:inst <name\|#>` | load a GM instrument onto the active track (see [Instrument](#instrument)) |
+| `:bar <n>` / `:bars <n>` | resize the song to `n` bars; fractions allowed (`:bar 2`, `:bar 1.5`) |
+| `:inst <name\|#>` | load a GM instrument or drum kit onto the active track (see [Instrument](#instrument)) |
 | `:ghost on|off` | show/hide ghost notes |
 | `:crt on|off` | toggle the CRT overlay |
-| `:scale <root> <name>` | set the project key, e.g. `:scale D Minor` (notes then label as scale degrees `1`…`7`) |
-| `:scale on\|off` | show/hide out-of-key ghosting |
+| `:scale <root> <name>` | set the project key, e.g. `:scale D Minor` (notes then label as scale degrees `1`…`7`); `:scale minor` keeps the root |
+| `:scale keys on\|off` | show only scale rows (degrees) instead of the chromatic keyboard |
+| `:scale on\|off` | show/hide the in-key row highlight |
 | `:chord <type>` | harmonise the selection / cursor note |
 | `:strum <progression> <pattern>` | create strummed chords, e.g. `:strum i v iv d-uu-u` |
-| `:view <name>` | switch view (`roll`, `drums`, `arrangement`, `mixer`, `sample`, `automation`, `help`) |
+| `:view <name>` | switch view (`roll`, `arrangement`, `mixer`, `sample`, `automation`, `help`) |
 | `:help` | show this reference in-app |
 | `:ctrl+1.1-E4,1.2-C4` | select the rectangle between two `bar.beat-note` corners and grab it (no spaces, comma between corners) |
 
@@ -217,8 +243,8 @@ button. Sticky modifiers highlight when active.
 Everything you can reach with the keyboard is also tappable: the tabs switch
 views, the toolbar starts/stops playback, the instrument chip (next to the
 track name) opens the tap-to-load sound list, mixer faders and toggles respond
-to touch, and the drum machine lays hits down under a finger (tap to move the
-cursor, double-tap to toggle a hit, drag to paint a run).
+to touch, and the piano roll lays hits down under a finger on a drum track
+(tap to move the cursor, double-tap to toggle a hit, drag to paint a run).
 
 In the piano roll, tap to move the cursor, double-tap an empty cell to add a
 note (or a note to select it), drag a selected note to move it (drag the

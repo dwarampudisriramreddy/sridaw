@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,14 +7,55 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'package:sridaw/input/daw_input.dart';
 import 'package:sridaw/main.dart';
+import 'package:sridaw/model/gm_instruments.dart';
 import 'package:sridaw/model/project.dart';
+import 'package:sridaw/model/project_io.dart';
+import 'package:sridaw/model/project_store.dart';
 import 'package:sridaw/render/arrangement_view.dart';
 import 'package:sridaw/render/automation_view.dart';
 import 'package:sridaw/render/browser_view.dart';
-import 'package:sridaw/render/drum_machine_view.dart';
 import 'package:sridaw/render/piano_roll_view.dart';
 import 'package:sridaw/render/roll_layout.dart';
 import 'package:sridaw/ui/daw_theme.dart';
+
+class _MemoryProjectStore extends ProjectStore {
+  final Map<String, Project> projects = {};
+
+  @override
+  Future<Directory> projectsDirectory() async =>
+      Directory('/memory/sridaw/projects');
+
+  @override
+  Future<String> save(Project project, {String? name}) async {
+    final projectName = ProjectStore.projectNameFor(
+      name == null || name.trim().isEmpty ? project.name : name,
+    );
+    project.name = projectName;
+    projects[projectName] = ProjectIO.fromJson(ProjectIO.toJson(project));
+    return '/memory/sridaw/projects/${ProjectStore.fileNameFor(projectName)}';
+  }
+
+  @override
+  Future<Project> load(String name) async {
+    final projectName = ProjectStore.projectNameFor(name);
+    final saved = projects[projectName];
+    if (saved == null) {
+      throw ProjectStoreException('no saved project named "$projectName"');
+    }
+    return ProjectIO.fromJson(ProjectIO.toJson(saved));
+  }
+
+  @override
+  Future<List<SavedProject>> list() async => projects.keys
+      .map(
+        (name) => SavedProject(
+          name: name,
+          path: '/memory/sridaw/projects/${ProjectStore.fileNameFor(name)}',
+          modified: DateTime(2026),
+        ),
+      )
+      .toList();
+}
 
 void main() {
   // Keep the tests hermetic: no network font fetching (which schedules timers
@@ -159,6 +202,7 @@ void main() {
     'y': LogicalKeyboardKey.keyY,
     'z': LogicalKeyboardKey.keyZ,
     '-': LogicalKeyboardKey.minus,
+    '.': LogicalKeyboardKey.period,
     '0': LogicalKeyboardKey.digit0,
     '1': LogicalKeyboardKey.digit1,
     '2': LogicalKeyboardKey.digit2,
@@ -302,6 +346,64 @@ void main() {
     await runCommand(tester, 'scale d minor');
     expect(painter().scene.project.scaleRoot, 2);
     expect(painter().scene.project.scaleName, 'Natural Minor');
+
+    // Tapping the chip changes root, scale, and row mode in one place.
+    await tester.tap(find.byKey(const Key('scale-chip')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.text('KEY & SCALE'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('scale-root-C')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('scale-name-Major')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('scale-keys-toggle')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('scale-done')));
+    await tester.pump();
+
+    expect(painter().scene.project.scaleRoot, 0);
+    expect(painter().scene.project.scaleName, 'Major');
+    expect(painter().scene.layout.scaleOnly, isTrue);
+  });
+
+  testWidgets('scale keys mode shows only scale rows and moves by degree', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+
+    await runCommand(tester, 'scale c major');
+    await runCommand(tester, 'scale keys on');
+
+    final layout = painter().scene.layout;
+    expect(layout.scaleOnly, isTrue);
+    expect(layout.visiblePitches, isNotEmpty);
+    expect(
+      layout.visiblePitches.every(
+        (p) => const {0, 2, 4, 5, 7, 9, 11}.contains(((p % 12) + 12) % 12),
+      ),
+      isTrue,
+    );
+    // C#4 is chromatic and therefore has no row in C major.
+    expect(layout.isPitchVisible(61), isFalse);
+    expect(painter().scene.pointer.pitch, 60);
+
+    // k/j step to the next scale degree, not the next semitone.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    expect(painter().scene.pointer.pitch, 62);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.pump();
+    expect(painter().scene.pointer.pitch, 60);
+
+    await runCommand(tester, 'scale keys off');
+    expect(painter().scene.layout.scaleOnly, isFalse);
+    expect(painter().scene.layout.isPitchVisible(61), isTrue);
   });
 
   testWidgets('the :chord command harmonises the note under the cursor', (
@@ -604,6 +706,21 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
     await tester.pump();
     expect(browser().activeProgram, program);
+
+    // The Drums category sits after the 16 melodic families.
+    final categories = browser().categories;
+    expect(categories.last, drumFamily);
+    browser().onCategoryTap!(categories.length - 1);
+    await tester.pump();
+    expect(browser().entries, hasLength(8));
+    expect(browser().entries.every((e) => e.drum), isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+    await tester.pump();
+    expect(browser().activeDrum, isTrue);
+    expect(browser().activeProgram, 24);
   });
 
   testWidgets('automation: i writes a breakpoint, d removes it', (
@@ -640,6 +757,37 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
     await tester.pump();
     expect(auto().lanes[lane].points, isEmpty);
+  });
+
+  testWidgets('bar length: :bar sets exact bars and shift+digit starts entry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+
+    await runCommand(tester, 'bar 1.5');
+    expect(painter().scene.project.totalBars, 1.5);
+    expect(painter().scene.project.totalSteps, 24);
+
+    // Shift+2 starts `bar 2` in the command line; Enter applies it.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.digit2);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.digit2);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    expect(painter().scene.mode.label, 'COMMAND');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(painter().scene.project.totalBars, 2);
+    expect(painter().scene.project.totalSteps, 32);
   });
 
   testWidgets(
@@ -993,135 +1141,38 @@ void main() {
     expect(scene.pointer.col, 0);
   });
 
-  testWidgets(
-    'drum machine: double-taps place hits and pads drive the cursor',
-    (tester) async {
-      // The drum tab sits directly after the roll tab.
-      expect(ViewMode.values.take(2), [ViewMode.roll, ViewMode.drumMachine]);
-
-      await tester.pumpWidget(const VimDawApp());
-      await tester.pump();
-
-      // Ctrl+2 opens the drum machine tab.
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-      await tester.pump();
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.digit2);
-      await tester.pump();
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.digit2);
-      await tester.pump();
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-      await tester.pump();
-
-      expect(find.text('DRUMS'), findsOneWidget);
-      final gridFinder = find.byWidgetPredicate(
-        (w) => w is CustomPaint && w.painter is DrumMachinePainter,
-      );
-      expect(gridFinder, findsOneWidget);
-
-      DrumMachinePainter painter() =>
-          tester.widget<CustomPaint>(gridFinder).painter! as DrumMachinePainter;
-      final origin = tester.getTopLeft(gridFinder);
-      final l = painter().scene.layout;
-      Offset cell(int row, int col) =>
-          origin +
-          Offset(
-            l.xForCol(col) + RollLayout.cellW / 2,
-            l.gridY + row * RollLayout.cellH + RollLayout.cellH / 2,
-          );
-
-      Future<void> doubleTap(Offset p) async {
-        final first = await tester.startGesture(p);
-        await first.up();
-        await tester.pump(const Duration(milliseconds: 40));
-        final second = await tester.startGesture(p);
-        await second.up();
-        await tester.pump(const Duration(milliseconds: 450));
-      }
-
-      // A single tap only moves the cursor.
-      await tester.tapAt(cell(0, 0));
-      await tester.pump();
-      final kick = painter().scene.pads[0].pitch;
-      expect(painter().scene.project.noteAt(kick, 0), isNull);
-      expect(painter().scene.cursorPad, 0);
-      expect(painter().scene.pointer.col, 0);
-      await tester.pump(const Duration(milliseconds: 450));
-
-      // Double-tap the first pad row on the first step: the kick lands and the
-      // track becomes a GM drum track so playback agrees.
-      await doubleTap(cell(0, 0));
-      expect(painter().scene.project.noteAt(kick, 0), isNotNull);
-      expect(painter().scene.project.track.channel, 9);
-
-      // Double-tapping the same cell again takes the hit back out.
-      await doubleTap(cell(0, 0));
-      expect(painter().scene.project.noteAt(kick, 0), isNull);
-
-      // Tapping a sound name selects that row.
-      await tester.tapAt(
-        origin +
-            Offset(
-              l.gutterW / 2,
-              l.gridY + 1 * RollLayout.cellH + RollLayout.cellH / 2,
-            ),
-      );
-      await tester.pump();
-      expect(painter().scene.cursorPad, 1);
-      expect(painter().scene.pointer.pitch, painter().scene.pads[1].pitch);
-
-      // Keyboard: i drops a hit, d removes it, j walks down a pad.
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
-      await tester.pump();
-      final snare = painter().scene.pads[1].pitch;
-      expect(painter().scene.project.noteAt(snare, 0), isNotNull);
-
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
-      await tester.pump();
-      expect(painter().scene.project.noteAt(snare, 0), isNull);
-
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
-      await tester.pump();
-      expect(painter().scene.cursorPad, 2);
-      expect(painter().scene.pointer.pitch, painter().scene.pads[2].pitch);
-    },
-  );
-
-  testWidgets('drum machine: + SOUND adds a sound from the GM kit', (
+  testWidgets('drums are edited in the roll and have no separate tab', (
     tester,
   ) async {
     await tester.pumpWidget(const VimDawApp());
     await tester.pump();
 
+    expect(find.text('DRUMS'), findsNothing);
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+    expect(painter().scene.layout.gutterW, RollLayout.keyW);
+
+    await runCommand(tester, 'drum on');
+    expect(painter().scene.project.track.channel, 9);
+    expect(painter().scene.layout.gutterW, RollLayout.drumGutterW);
+
+    // Ctrl+2 no longer switches away from the roll.
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.digit2);
     await tester.pump();
     await tester.sendKeyUpEvent(LogicalKeyboardKey.digit2);
-    await tester.pump();
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
+    expect(rollFinder, findsOneWidget);
+    expect(find.text('DRUMS'), findsNothing);
 
-    final gridFinder = find.byWidgetPredicate(
-      (w) => w is CustomPaint && w.painter is DrumMachinePainter,
-    );
-    DrumMachinePainter painter() =>
-        tester.widget<CustomPaint>(gridFinder).painter! as DrumMachinePainter;
-    expect(find.text('SIDE STICK'), findsNothing);
-
-    await tester.tap(find.text('+ SOUND'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 60));
-    expect(find.text('ADD SOUND'), findsOneWidget);
-    expect(find.text('SIDE STICK'), findsOneWidget);
-
-    await tester.tap(find.text('SIDE STICK'));
-    await tester.pump();
-    // Let the dialog finish closing so only the pad row is left.
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(painter().scene.pads.map((p) => p.name), contains('SIDE STICK'));
-    expect(find.text('SIDE STICK'), findsOneWidget);
-    expect(find.text('ADD SOUND'), findsNothing);
+    await runCommand(tester, 'drum off');
+    expect(painter().scene.project.track.channel, 0);
+    expect(painter().scene.layout.gutterW, RollLayout.keyW);
   });
 
   testWidgets('toolbar instrument chip opens a picker and loads a sound', (
@@ -1158,6 +1209,43 @@ void main() {
     expect(find.text('inst Lead 1 (square) (program 81)'), findsOneWidget);
   });
 
+  testWidgets('instrument picker loads an 808/909 drum kit into the roll', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const VimDawApp());
+    await tester.pump();
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+    final project = painter().scene.project;
+    expect(painter().scene.layout.gutterW, RollLayout.keyW);
+
+    await tester.tap(find.byKey(const Key('instrument-chip')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+
+    final row = find.byKey(const Key('inst-kit-25'));
+    expect(row, findsOneWidget);
+    await tester.tap(row);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(project.track.type, TrackType.drum);
+    expect(project.track.channel, 9);
+    expect(project.track.instrument, 25);
+    expect(painter().scene.layout.gutterW, RollLayout.drumGutterW);
+    expect(find.text('808 / 909 Kit'), findsWidgets);
+
+    // A melodic choice leaves drum mode and loads the new sound.
+    await runCommand(tester, 'inst square');
+    expect(project.track.type, TrackType.synth);
+    expect(project.track.channel, project.activeTrack);
+    expect(project.track.instrument, 80);
+    expect(painter().scene.layout.gutterW, RollLayout.keyW);
+  });
+
   testWidgets('play schedules the project notes into the engine', (
     tester,
   ) async {
@@ -1191,6 +1279,82 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.space);
     await tester.pump();
     expect(find.text('PAUSED'), findsOneWidget);
+  });
+
+  testWidgets('project storage saves and reopens notes for editing', (
+    tester,
+  ) async {
+    final store = _MemoryProjectStore();
+    await tester.pumpWidget(VimDawApp(projectStore: store));
+    await tester.pump();
+
+    final rollFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is PianoRollPainter,
+    );
+    PianoRollPainter painter() =>
+        tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyL);
+    await tester.pump();
+
+    await runCommand(tester, 'w first');
+    await tester.pump();
+    expect(store.projects.keys, contains('first'));
+
+    await runCommand(tester, 'bpm 144');
+    await tester.pump();
+    await runCommand(tester, 'w first');
+    await tester.pump();
+    expect(painter().scene.project.bpm, 144);
+
+    await runCommand(tester, 'bpm 90');
+    await tester.pump();
+    expect(painter().scene.project.bpm, 90);
+
+    await runCommand(tester, 'e first');
+    await tester.pump();
+
+    expect(painter().scene.project.name, 'first');
+    expect(painter().scene.project.bpm, 144);
+    expect(
+      painter().scene.project.track.notes.where(
+        (note) => note.pitch == 61 && note.start == 0 && note.len == 2,
+      ),
+      isNotEmpty,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyL);
+    await tester.pump();
+    expect(painter().scene.pointer.col, 1);
+
+    await tester.tap(find.byKey(const Key('project-chip')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const Key('project-picker')), findsOneWidget);
+    expect(find.byKey(const Key('project-open-first')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('project-open-first')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const Key('project-picker')), findsNothing);
+    expect(painter().scene.pointer.col, 0);
+
+    await tester.tap(find.byKey(const Key('project-chip')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.enterText(
+      find.byKey(const Key('project-name-field')),
+      'second',
+    );
+    await tester.tap(find.byKey(const Key('project-save')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(store.projects.keys, contains('second'));
+    expect(painter().scene.project.name, 'second');
   });
 
   testWidgets('help view documents the touch gestures', (tester) async {
