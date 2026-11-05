@@ -970,23 +970,23 @@ void main() {
       ),
     );
     await tester.pump();
-    final editable = find.byType(EditableText);
+    expect(tester.testTextInput.hasAnyClients, isTrue);
 
-    await tester.enterText(editable, 'j');
+    tester.testTextInput.enterText('j');
     await tester.pump();
-    await tester.enterText(editable, 'jk');
+    tester.testTextInput.enterText('jk');
     await tester.pump();
-    await tester.enterText(editable, 'jk:');
+    tester.testTextInput.enterText('jk:');
     await tester.pump();
     expect(received, ['j', 'k', ':']);
 
     // Deleting from the IME must not replay the remaining text.
-    await tester.enterText(editable, 'jk');
+    tester.testTextInput.enterText('jk');
     await tester.pump();
     expect(received, ['j', 'k', ':']);
 
     // A platform replacement is forwarded as fresh input.
-    await tester.enterText(editable, 'x');
+    tester.testTextInput.enterText('x');
     await tester.pump();
     expect(received, ['j', 'k', ':', 'x']);
   });
@@ -1001,9 +1001,8 @@ void main() {
     PianoRollPainter painter() =>
         tester.widget<CustomPaint>(rollFinder).painter! as PianoRollPainter;
     final project = painter().scene.project;
-    final editable = find.byType(EditableText);
 
-    await tester.enterText(editable, ':bpm 140');
+    tester.testTextInput.enterText(':bpm 140');
     await tester.pump();
     expect(painter().scene.mode.label, 'COMMAND');
 
@@ -1013,7 +1012,7 @@ void main() {
     expect(painter().scene.mode.label, 'NORMAL');
     expect(tester.testTextInput.hasAnyClients, isTrue);
 
-    await tester.enterText(editable, ':strum i,vi,v d-dxu-du');
+    tester.testTextInput.enterText(':strum i,vi,v d-dxu-du');
     await tester.pump();
     expect(painter().scene.mode.label, 'COMMAND');
 

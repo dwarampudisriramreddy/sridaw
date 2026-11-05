@@ -1,13 +1,12 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../core/app_log.dart';
 
-/// Keeps an invisible [EditableText] permanently focused so the OS soft
-/// keyboard never dismisses, and routes *all* input through two callbacks:
+/// Keeps a text input connection attached so the OS soft keyboard never
+/// dismisses, and routes *all* input through two callbacks:
 ///
 /// * [onKey]  - hardware key events (desktop + external keyboards), including
 ///              key-up so held-note logic works later.
@@ -33,9 +32,25 @@ class AlwaysOnKeyboard extends StatefulWidget {
 }
 
 class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
-    with WidgetsBindingObserver {
-  final FocusNode _focus = FocusNode(debugLabel: 'daw-always-on');
-  final TextEditingController _controller = TextEditingController();
+    with WidgetsBindingObserver, TextInputClient {
+  static const TextInputConfiguration _configuration = TextInputConfiguration(
+    inputType: TextInputType.text,
+    inputAction: TextInputAction.newline,
+    autocorrect: false,
+    enableSuggestions: false,
+    enableInteractiveSelection: false,
+    enableIMEPersonalizedLearning: false,
+    smartDashesType: SmartDashesType.disabled,
+    smartQuotesType: SmartQuotesType.disabled,
+    textCapitalization: TextCapitalization.none,
+  );
+
+  final FocusNode _focus = FocusNode(
+    debugLabel: 'daw-always-on',
+    skipTraversal: true,
+  );
+  TextInputConnection? _connection;
+  TextEditingValue _value = TextEditingValue.empty;
   String _lastText = '';
 
   @override
@@ -43,7 +58,6 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_handleHardwareKey);
-    _controller.addListener(_handleText);
     _focus.addListener(_handleFocusChange);
     FocusManager.instance.addListener(_handleAnyFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) => _refocus());
@@ -54,7 +68,7 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKey);
     FocusManager.instance.removeListener(_handleAnyFocusChange);
-    _controller.dispose();
+    _connection?.close();
     _focus.dispose();
     super.dispose();
   }
@@ -84,17 +98,9 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     if (!hadFocus && !otherField) {
       _focus.requestFocus();
     }
-    // Focus is often requested while the hidden editor is still waiting for
-    // its first layout. Showing the IME before that triggers Android's
-    // "RenderEditable has no size" path, and Gboard can stay disconnected.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_focus.hasFocus) return;
-      // On mobile, focusing programmatically does not always pop the IME up
-      // (notably right after startup), so ask for it explicitly.
-      if (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS) {
-        SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-      }
+      if (!mounted || !_focus.hasFocus || _textInputsOwnFocus()) return;
+      _openInput();
     });
     AppLog.instance.debug(
       'IME',
@@ -103,11 +109,28 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     );
   }
 
+  void _openInput() {
+    var connection = _connection;
+    if (connection == null || !connection.attached) {
+      connection?.close();
+      connection = TextInput.attach(this, _configuration);
+      _connection = connection;
+      connection.setEditingState(_value);
+      AppLog.instance.debug('IME', 'attached input connection');
+    }
+    connection.show();
+    AppLog.instance.debug('IME', 'requested keyboard show');
+  }
+
   void _handleFocusChange() {
     AppLog.instance.debug('IME', 'sink focus=${_focus.hasFocus}');
-    if (!_focus.hasFocus) {
-      scheduleMicrotask(_refocus);
+    if (_focus.hasFocus) {
+      scheduleMicrotask(_openInput);
+      return;
     }
+    _connection?.close();
+    _connection = null;
+    scheduleMicrotask(_refocus);
   }
 
   /// Fires for every focus move in the app — including the moment a dialog
@@ -152,17 +175,19 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
     return widget.onKey(event);
   }
 
-  void _handleText() {
-    final text = _controller.text;
-    if (text == _lastText) return;
-    AppLog.instance.debug(
-      'IME',
-      'text="${_controller.text}" last="$_lastText"',
-    );
+  @override
+  TextEditingValue? get currentTextEditingValue => _value;
 
-    // Never clear the controller from inside its listener: Gboard tries to
-    // restore the composing region and can end up in a loop where no keys
-    // reach the app. Keep the hidden buffer and forward only new characters.
+  @override
+  AutofillScope? get currentAutofillScope => null;
+
+  @override
+  void updateEditingValue(TextEditingValue value) {
+    final text = value.text;
+    _value = value;
+    if (text == _lastText) return;
+    AppLog.instance.debug('IME', 'text="$text" last="$_lastText"');
+
     if (text.startsWith(_lastText)) {
       final delta = text.substring(_lastText.length);
       _lastText = text;
@@ -186,50 +211,47 @@ class _AlwaysOnKeyboardState extends State<AlwaysOnKeyboard>
   }
 
   @override
+  void performAction(TextInputAction action) {
+    AppLog.instance.debug('IME', 'action=$action');
+    if (action != TextInputAction.newline && action != TextInputAction.done) {
+      return;
+    }
+    widget.onSubmit?.call();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focus.hasFocus || _textInputsOwnFocus()) return;
+      _openInput();
+    });
+  }
+
+  @override
+  void performPrivateCommand(String action, Map<String, dynamic> data) {}
+
+  @override
+  void updateFloatingCursor(RawFloatingCursorPoint point) {}
+
+  @override
+  void showAutocorrectionPromptRect(int start, int end) {}
+
+  @override
+  bool onFocusReceived() => _focus.hasFocus;
+
+  @override
+  void connectionClosed() {
+    AppLog.instance.debug('IME', 'connection closed');
+    _connection = null;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Invisible IME sink. It must still get real constraints: a 1x1 box
-        // can leave RenderEditable without a size on Android, so Gboard opens
-        // but never delivers text.
         Positioned.fill(
           child: IgnorePointer(
-            child: Opacity(
-              opacity: 0,
-              child: EditableText(
-                controller: _controller,
-                focusNode: _focus,
-                style: const TextStyle(color: Color(0x00000000), fontSize: 16),
-                cursorColor: const Color(0x00000000),
-                backgroundCursorColor: const Color(0x00000000),
-                showCursor: false,
-                keyboardType: TextInputType.text,
-                autocorrect: false,
-                enableSuggestions: false,
-                enableIMEPersonalizedLearning: false,
-                enableInteractiveSelection: false,
-                smartDashesType: SmartDashesType.disabled,
-                smartQuotesType: SmartQuotesType.disabled,
-                textCapitalization: TextCapitalization.none,
-                maxLines: 1,
-                textInputAction: TextInputAction.newline,
-                scrollPadding: EdgeInsets.zero,
-                onChanged: (_) {},
-                // Keep the input connection alive after the Done action.
-                onEditingComplete: () {
-                  AppLog.instance.debug('IME', 'editing complete');
-                },
-                onSubmitted: (_) {
-                  AppLog.instance.debug('IME', 'submitted');
-                  widget.onSubmit?.call();
-                  // Some Android IMEs hide after Done even when focus is
-                  // retained, so ask for the keyboard again after the frame.
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => _refocus(),
-                  );
-                },
-              ),
+            child: Focus(
+              focusNode: _focus,
+              includeSemantics: false,
+              child: const SizedBox.expand(),
             ),
           ),
         ),
