@@ -38,6 +38,17 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Install JUCE host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxcursor-dev libxcomposite-dev libxrender-dev \
+            libgl1-mesa-dev
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+
       - name: Install dependencies
         run: flutter pub get
 
